@@ -54,7 +54,7 @@ public class CarryFromWarehouseToProduce : TaskBase
             var passMask = resident.economyService?.passMask ?? new byte[] { 1 };
             _moveToStorage = MoveToTask.Create(resident, sourceStorage.transform, passMask);
             _moveToStorage.Completed += OnArrivedStorage;
-            resident.taskService.Enqueue(_moveToStorage);
+            resident.taskService.Enqueue(_moveToStorage,true);
         }
         catch (Exception ex)
         {

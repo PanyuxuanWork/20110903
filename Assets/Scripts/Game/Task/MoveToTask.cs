@@ -1,15 +1,9 @@
 using System;
 using UnityEngine;
 
-/// <summary>
-/// MoveToTask：起点/终点用 Transform 表示；Start 时异步寻路（FindPathService），回调拿到 path 后沿路移动。
-/// - 池化：用 ObPool<MoveToTask>，完成/取消时自动回收
-/// - 可选：卡住重寻路（以当前 actor/goal 的最新位置重新请求）
-/// </summary>
 public sealed class MoveToTask : TaskBase
 {
-    // ========= 工厂（你习惯的 Create） =========
-
+    
     public static MoveToTask Create(Resident resident, 
         Transform target, 
         byte[] passMask,
@@ -43,27 +37,24 @@ public sealed class MoveToTask : TaskBase
         float stuckTimeout = 2.0f)
     {
         var t = ObPool<MoveToTask>.Get();
-        t.Reset();        // TaskBase: 清状态/事件
-        t.ResetForUse();  // 本类私有字段复位
+        t.Reset();        
+        t.ResetForUse();  
         return t.Init(actor, grid, startTf, goalTf, passMask,
                       speed, arriveEps, rotate, rotLerp,
                       repathOnBlocked, repathInterval, stuckTimeout);
     }
 
-    // ========= 输入对象 =========
-    private Transform _actor;   // 执行移动的单位
+    private Transform _actor;   
     private GridAsset _grid;
-    private Transform _startTf; // 起点（Transform）
-    private Transform _goalTf;  // 终点（Transform）
+    private Transform _startTf; 
+    private Transform _goalTf;  
     private byte[] _passMask;
 
-    // 调参
     private float _speed;
     private float _arriveSqrEps;
     private bool _rotate;
     private float _rotLerp;
 
-    // 健壮性（可选）
     private bool _repathOnBlocked;
     private float _repathInterval;
     private float _repathTimer;
@@ -71,12 +62,9 @@ public sealed class MoveToTask : TaskBase
     private float _stuckTimer;
     private Vector3 _lastPos;
 
-    // 运行态
     private int[] _path;
     private int _cursor;
     private bool _awaitingPath;
-
-    // ========= 复位 & 初始化 =========
     private MoveToTask ResetForUse()
     {
         _actor = null;
@@ -216,12 +204,12 @@ public sealed class MoveToTask : TaskBase
 
     protected override void OnCancel()
     {
-        // 如果你的寻路有“取消”token，可在此撤销；当前实现不需要额外处理
+       
     }
 
     protected override void OnComplete(TaskResult result)
     {
-        // 释放强引用，便于池化复用
+       
         _actor = null;
         _grid = null;
         _startTf = null;
@@ -232,7 +220,7 @@ public sealed class MoveToTask : TaskBase
         ObPool<MoveToTask>.Release(this);
     }
 
-    // ========= 内部：寻路与坐标换算 =========
+
     private void RequestPathByTransforms()
     {
         _lastPos = _actor.position;
@@ -253,7 +241,7 @@ public sealed class MoveToTask : TaskBase
 
     private void OnPathReady(int[] path)
     {
-        if (IsDone) return;  // 可能已被取消/抢占
+        if (IsDone) return;  
         _awaitingPath = false;
 
         if (path == null || path.Length == 0)

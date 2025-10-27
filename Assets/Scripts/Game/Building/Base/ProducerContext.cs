@@ -165,14 +165,13 @@ public class ProducerContext : MonoBehaviour, IStepListener
         var resident = residentEco.GetComponent<Resident>();
         if (resident == null)
         {
-            // release just in case (FindAvailableResident already added it)
             ReleaseResident(residentEco, true);
             return false;
         }
 
         var originPos = resident.transform.position;
 
-        // 找最近且有可用量的仓库 —— 避免 OrderBy 分配开销
+        // 找最近且有可用量的仓库
         Storage found = null;
         float bestDistSq = float.PositiveInfinity;
         for (int i = 0; i < supplyStorages.Count; i++)
@@ -186,86 +185,59 @@ public class ProducerContext : MonoBehaviour, IStepListener
 
         if (found == null)
         {
-            // no candidate; release resident and bail out
             ReleaseResident(residentEco, true);
             return false;
         }
 
-        var sFound = found;
-        int residentTicket = 0;
         int storageTicket = 0;
-        var backpack = residentEco.backpack;
-        if (backpack == null)
-        {
-            ReleaseResident(residentEco, true);
-            return false;
-        }
-
-        bool gotBackpack = false;
+        int unitCapTicket = 0;
         bool gotStorage = false;
+        bool gotUnitCap = false;
+
         try
         {
-            gotBackpack = backpack.TryReserveCapacity(id, amount, out residentTicket);
-            if (!gotBackpack)
+            // 先在仓库上预约货物（source goods）
+            gotStorage = found.TryReserveResource(id, amount, out storageTicket);
+            if (!gotStorage) { ReleaseResident(residentEco, true); return false; }
+
+            // 再在目标生产单元的 inputStorage 上预约容量（destination capacity）
+            if (unit.inputStorage == null)
             {
+                // 回滚
+                try { found.CancelGoodsReserve(storageTicket); } catch { }
                 ReleaseResident(residentEco, true);
                 return false;
             }
 
-            gotStorage = sFound.TryReserveResource(id, amount, out storageTicket);
-            if (!gotStorage)
+            gotUnitCap = unit.inputStorage.TryReserveCapacity(id, amount, out unitCapTicket);
+            if (!gotUnitCap)
             {
-                try { backpack.CancelCapacityReserve(residentTicket); } catch { }
+                try { found.CancelGoodsReserve(storageTicket); } catch { }
                 ReleaseResident(residentEco, true);
                 return false;
             }
 
-            Debug.Log($"[ProducerContext] Reserved {amount} x {id} from '{sFound.name}' (storageTicket={storageTicket}) " +
-                      $"and reserved capacity in backpack (residentTicket={residentTicket}).");
+            Debug.Log($"[ProducerContext] Reserved {amount} x {id} from '{found.name}' (storageTicket={storageTicket}) " +
+                      $"and reserved capacity in unit.input (unitCapTicket={unitCapTicket}).");
 
-            // ---- 按你既有风格入队子任务（move/get/reserveCapacity） ----
-            MoveToTask moveTo = MoveToTask.Create(resident, sFound.transform, residentEco.passMask);
-            GetResourceTask getResource = GetResourceTask.Create(resident, sFound, residentTicket, storageTicket);
+            // 创建大任务：搬运（仓库 -> 生产单元）
+            var carry = CarryFromWarehouseToProduce.Create(resident, found, unit, id, amount, storageTicket, unitCapTicket);
+            carry.resident.ParentArea.producerContext = this; // 让任务知道来通知回调
+            resident.taskService.Enqueue(carry);
 
-            // ReserveCapacityTask 的回调需要将后续动作入队。为避免 lambda capture 高频分配，可用局部函数（仍可能 capture，但更清晰）
-            ReserveCapacityTask reserveCapacityTask = ReserveCapacityTask.Create(resident, sFound, id, amount, OnReserveCapacityForInput);
-
-            resident.taskService.Enqueue(moveTo);
-            resident.taskService.Enqueue(getResource);
-            resident.taskService.Enqueue(reserveCapacityTask);
-
-            // 触发分发事件
             OnAssignedInput?.Invoke(unit, id, amount);
             return true;
         }
         catch (Exception ex)
         {
             Debug.LogException(ex);
-            if (gotStorage) try { sFound.CancelGoodsReserve(storageTicket); } catch { }
-            if (gotBackpack) try { backpack.CancelCapacityReserve(residentTicket); } catch { }
+            if (gotStorage) try { found.CancelGoodsReserve(storageTicket); } catch { }
+            if (gotUnitCap) try { unit.inputStorage.CancelCapacityReserve(unitCapTicket); } catch { }
             ReleaseResident(residentEco, true);
             return false;
         }
-
-        // local callback for ReserveCapacityTask -> enqueues moveBack & put task
-        void OnReserveCapacityForInput(int _residentTicket, int _storageTicket)
-        {
-            try
-            {
-                MoveToTask moveBack = MoveToTask.Create(resident, unit.transform, residentEco.passMask);
-                PutResourceTask putResource = PutResourceTask.Create(resident, unit.inputStorage, _residentTicket, _storageTicket);
-
-                // putResource 完成时，让任务/大任务调用 ProducerContext.NotifyInputCompleted(...)
-                // 你可以在 PutResourceTask 完成时在任务里调用 ProducerContext.NotifyInputCompleted(...)
-                resident.taskService.Enqueue(moveBack);
-                resident.taskService.Enqueue(putResource);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
-        }
     }
+
 
     // ServerOutput: 把 unit.outputStorage 的产物搬到 sinkStorages（回收仓）
     private bool ServerOutput(ProducerUnit unit, ResourceId id, int qty)
@@ -304,37 +276,40 @@ public class ProducerContext : MonoBehaviour, IStepListener
             return false;
         }
 
-        int sinkTicket = 0;
-        int unitTicket = 0;
+        int sinkCapTicket = 0;
+        int unitGoodsTicket = 0;
         bool gotSink = false;
         bool gotUnit = false;
 
         try
         {
-            gotSink = found.TryReserveCapacity(id, qty, out sinkTicket);
+            gotSink = found.TryReserveCapacity(id, qty, out sinkCapTicket);
             if (!gotSink) { ReleaseResident(residentEco, false); return false; }
 
-            // 假定 unit.outputStorage 实现了 TryReserveResource
-            gotUnit = unit.outputStorage.TryReserveResource(id, qty, out unitTicket);
-            if (!gotUnit)
+            // 生产单元的 outputStorage 预约出库
+            var outStorage = unit.outputStorage;
+            if (outStorage == null)
             {
-                try { found.CancelCapacityReserve(sinkTicket); } catch { }
+                try { found.CancelCapacityReserve(sinkCapTicket); } catch { }
                 ReleaseResident(residentEco, false);
                 return false;
             }
 
-            Debug.Log($"[ProducerContext] Reserved output {qty} x {id} from unit '{unit.name}' (unitTicket={unitTicket}) " +
-                      $"and reserved capacity in sink '{found.name}' (sinkTicket={sinkTicket}).");
+            gotUnit = outStorage.TryReserveResource(id, qty, out unitGoodsTicket);
+            if (!gotUnit)
+            {
+                try { found.CancelCapacityReserve(sinkCapTicket); } catch { }
+                ReleaseResident(residentEco, false);
+                return false;
+            }
 
-            MoveToTask moveToUnit = MoveToTask.Create(resident, unit.transform, residentEco.passMask);
+            Debug.Log($"[ProducerContext] Reserved output {qty} x {id} from unit '{unit.name}' (unitTicket={unitGoodsTicket}) " +
+                      $"and reserved capacity in sink '{found.name}' (sinkTicket={sinkCapTicket}).");
 
-            GetResourceTask getResource = GetResourceTask.Create(resident, unit.outputStorage, unitTicket, sinkTicket);
-
-            ReserveCapacityTask reserveCapacityTask = ReserveCapacityTask.Create(resident, found, id, qty, OnReserveCapacityForOutput);
-
-            resident.taskService.Enqueue(moveToUnit);
-            resident.taskService.Enqueue(getResource);
-            resident.taskService.Enqueue(reserveCapacityTask);
+            // 创建大任务：搬运（生产单元 -> 仓库）
+            //var carryOut = CarryFromProduceToWarehouse.Create(resident, unit, found, id, qty, sinkCapTicket, unitGoodsTicket);
+            //carryOut.resident.ParentArea.producerContext = this;
+            //resident.taskService.Enqueue(carryOut);
 
             OnAssignedOutput?.Invoke(unit, id, qty);
             return true;
@@ -342,27 +317,10 @@ public class ProducerContext : MonoBehaviour, IStepListener
         catch (Exception ex)
         {
             Debug.LogException(ex);
-            if (gotUnit) try { unit.outputStorage.CancelGoodsReserve(unitTicket); } catch { }
-            if (gotSink) try { found.CancelCapacityReserve(sinkTicket); } catch { }
+            if (gotUnit) try { unit.outputStorage.CancelGoodsReserve(unitGoodsTicket); } catch { }
+            if (gotSink) try { found.CancelCapacityReserve(sinkCapTicket); } catch { }
             ReleaseResident(residentEco, false);
             return false;
-        }
-
-        void OnReserveCapacityForOutput(int _dstTicket, int _srcTicket)
-        {
-            try
-            {
-                MoveToTask moveToSink = MoveToTask.Create(resident, found.transform, residentEco.passMask);
-                PutResourceTask putResource = PutResourceTask.Create(resident, found, _dstTicket, _srcTicket);
-
-                // putResource Completed 回调里请在你的大任务中调用 ProducerContext.NotifyOutputCompleted(...)
-                resident.taskService.Enqueue(moveToSink);
-                resident.taskService.Enqueue(putResource);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
         }
     }
 
