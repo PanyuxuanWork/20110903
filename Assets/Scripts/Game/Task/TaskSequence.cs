@@ -50,8 +50,8 @@ public sealed class TaskSequence : TaskBase
     /// <summary>
     /// 配置失败策略和取消策略
     /// </summary>
-    /// <param name="stopOnFail">子任务失败会立即中止整个任务</param>
-    /// <param name="propagateCancelToChild">序列取消，子任务也取消</param>
+    /// <param StepName="stopOnFail">子任务失败会立即中止整个任务</param>
+    /// <param StepName="propagateCancelToChild">序列取消，子任务也取消</param>
     /// <returns></returns>
     public TaskSequence Configure(bool stopOnFail = true, bool propagateCancelToChild = true)
     {
@@ -63,9 +63,9 @@ public sealed class TaskSequence : TaskBase
     /// <summary>
     /// 开启循环模式
     /// </summary>
-    /// <param name="exclusiveLooping">开启后普通任务无法抢占</param>
-    /// <param name="shouldContinue">每一轮开始前检查是否继续</param>
-    /// <param name="cycleFactory">每一轮生成一组新的子任务</param>
+    /// <param StepName="exclusiveLooping">开启后普通任务无法抢占</param>
+    /// <param StepName="shouldContinue">每一轮开始前检查是否继续</param>
+    /// <param StepName="cycleFactory">每一轮生成一组新的子任务</param>
     ///eg:
     ///seq.EnableLooping(true, 
     ///shouldContinue: () => !Depot.IsFull, 
@@ -93,13 +93,13 @@ public sealed class TaskSequence : TaskBase
     /// <summary>
     /// 外部组装
     /// </summary>
-    /// <param name="step">子任务</param>
+    /// <param StepName="step">子任务</param>
     /// <returns></returns>
     public TaskSequence Add(TaskBase step) { if (step != null) _steps.Add(step); return this; }
     /// <summary>
     /// 批量外部组装
     /// </summary>
-    /// <param name="steps">多个子任务 </param>
+    /// <param StepName="steps">多个子任务 </param>
     /// <returns></returns>
     public TaskSequence AddRange(IEnumerable<TaskBase> steps)
     {
@@ -109,7 +109,7 @@ public sealed class TaskSequence : TaskBase
     /// <summary>
     /// 插入到下一个任务，适用于当前任务结束后，立即执行下一个任务
     /// </summary>
-    /// <param name="newHead"></param>
+    /// <param StepName="newHead"></param>
     public void InsertFront(IEnumerable<TaskBase> newHead)
     {
         if (newHead == null) return;
@@ -119,7 +119,7 @@ public sealed class TaskSequence : TaskBase
     /// <summary>
     /// 打断当前序列，把后续任务替换成新任务
     /// </summary>
-    /// <param name="newHead">新任务序列</param>
+    /// <param StepName="newHead">新任务序列</param>
     public void InterruptAndPrepend(IEnumerable<TaskBase> newHead)
     {
         if (_current != null && PropagateCancelToChild && !_current.IsDone)

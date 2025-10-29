@@ -68,7 +68,7 @@ public class BuildingContext : MonoBehaviour
             Counts[baseKey] = 1; // 第一次使用了 0，下一次将用 1
         }
 
-        // Debug.Log($"Register key=0x{uniqueKey:X8} (base=0x{baseKey:X8}, inst={nextId}) for {go.name}");
+        // Debug.Log($"Register key=0x{uniqueKey:X8} (base=0x{baseKey:X8}, inst={nextId}) for {go.StepName}");
         return uniqueKey;
     }
 

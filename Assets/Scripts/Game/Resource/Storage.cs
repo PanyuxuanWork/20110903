@@ -5,17 +5,11 @@ using UnityEngine;
 
 public class Storage : MonoBehaviour, IStorage
 {
-    [Header("槽位配置（固定类型）")]
     [SerializeField] private List<FixedResourceSlot> _slots = new();
 
-    [Header("接收白名单（为空=全接收）")]
     [SerializeField] private List<ResourceId> _acceptWhitelist = new();
 
-    [Header("预约 TTL 设置")]
-    [Tooltip("是否启用预约 TTL（到期自动释放）。")]
     [SerializeField] private bool _enableTtl = true;
-
-    [Tooltip("默认 TTL 秒数。TryReserve* 未传入自定义 ttlSec 时使用。")]
     [SerializeField] private float _defaultTtlSeconds = 300f;
 
     /// <summary>时间源（默认为 Time.unscaledTime）。可在测试/模拟时替换。</summary>
@@ -23,7 +17,6 @@ public class Storage : MonoBehaviour, IStorage
 
     public IReadOnlyList<IResourceSlot> Slots => _slots as IReadOnlyList<IResourceSlot>;
 
-    // ―― 两类预约 ―― //
     private int _nextTicket = 1;
 
     private struct GoodsReserve { public ResourceId Id; public int Amount; public float ExpireAt; }
@@ -56,8 +49,8 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 入库
     /// </summary>
-    /// <param name="capTicket"></param>
-    /// <param name="amount"></param>
+    /// <param StepName="capTicket"></param>
+    /// <param StepName="amount"></param>
     /// <returns></returns>
     public int GetResource(int capTicket, int amount)
     {
@@ -88,8 +81,8 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 出库
     /// </summary>
-    /// <param name="goodsTicket"></param>
-    /// <param name="maxAmount"></param>
+    /// <param StepName="goodsTicket"></param>
+    /// <param StepName="maxAmount"></param>
     /// <returns></returns>
     public int OfferResource(int goodsTicket, int maxAmount)
     {
@@ -122,10 +115,10 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 入库预留
     /// </summary>
-    /// <param name="id"></param>
-    /// <param name="amount"></param>
-    /// <param name="capTicket"></param>
-    /// <param name="ttlSec"></param>
+    /// <param StepName="id"></param>
+    /// <param StepName="amount"></param>
+    /// <param StepName="capTicket"></param>
+    /// <param StepName="ttlSec"></param>
     /// <returns></returns>
     public bool TryReserveCapacity(ResourceId id, int amount, out int capTicket, float ttlSec=5000)
     {
@@ -145,10 +138,10 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 出库预留
     /// </summary>
-    /// <param name="id"></param>
-    /// <param name="amount"></param>
-    /// <param name="goodsTicket"></param>
-    /// <param name="ttlSec"></param>
+    /// <param StepName="id"></param>
+    /// <param StepName="amount"></param>
+    /// <param StepName="goodsTicket"></param>
+    /// <param StepName="ttlSec"></param>
     /// <returns></returns>
     public bool TryReserveResource(ResourceId id, int amount, out int goodsTicket, float ttlSec = 5000)
     {
@@ -319,7 +312,7 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 初始化槽
     /// </summary>
-    /// <param name="defs">三元组-（资源，最大值，初始值）</param>
+    /// <param StepName="defs">三元组-（资源，最大值，初始值）</param>
     public void ConfigureSlots(params (ResourceId id, int cap, int initial)[] defs)
     {
         _slots.Clear();
@@ -328,7 +321,7 @@ public class Storage : MonoBehaviour, IStorage
     /// <summary>
     /// 设置资源白名单
     /// </summary>
-    /// <param name="ids">资源数组</param>
+    /// <param StepName="ids">资源数组</param>
     public void SetAcceptWhitelist(params ResourceId[] ids)
     {
         _acceptWhitelist.Clear();

@@ -26,6 +26,8 @@ public abstract class MiniStep
         Canceled
     }
 
+    public abstract string StepName { get; set; }
+
     public State CurrentState { get; private set; } = State.None;
     public bool IsDone => CurrentState == State.Succeeded || CurrentState == State.Failed || CurrentState == State.Canceled;
 
@@ -81,6 +83,7 @@ public abstract class MiniStep
     protected void Succeed()
     {
         if (IsDone) return;
+        TLog.Log($"{StepName} has Succeeded");
         Transition(State.Succeeded, Result.Succeeded);
     }
 
@@ -90,6 +93,7 @@ public abstract class MiniStep
     protected void Fail()
     {
         if (IsDone) return;
+        TLog.Log($"{StepName} is Failed");
         Transition(State.Failed, Result.Failed);
     }
 
@@ -145,16 +149,13 @@ public abstract class MiniStep
     #region Hooks for subclasses
 
     /// <summary>Called when Start() invoked (wrap in try/catch at caller).</summary>
-    public virtual void OnStart() { }
+    public abstract void OnStart();
 
     /// <summary>
     /// Called each Tick when running. Return true to indicate success/completion.
     /// If exception thrown, Tick will call Fail().
     /// </summary>
-    public virtual bool OnUpdate(float dt)
-    {
-        return true;
-    }
+    public abstract bool OnUpdate(float dt);
 
     /// <summary>Called when Cancel() invoked (before transition to Canceled).</summary>
     public virtual void OnCancel() { }
@@ -169,7 +170,7 @@ public abstract class MiniStep
     public virtual void OnCancelEnd() { }
 
     /// <summary>Called in any terminal transition (Succeeded/Failed/Canceled).</summary>
-    public virtual void OnComplete(Result result) { }
+    public abstract void OnComplete(Result result);
 
     /// <summary>Exception handler for OnStart/OnUpdate.</summary>
     public virtual void OnException(Exception ex)
@@ -207,7 +208,7 @@ public abstract class MiniStep
         private readonly Action _onSuccess;
         private readonly Action _onFail;
         private readonly Action<MiniStep> _onCompleted;
-
+        public override string StepName { get; set; }
         public CallbackMiniStep(Action onStart, Func<float, bool> onUpdate, Action onCancel, Action onSuccess, Action onFail, Action<MiniStep> onCompleted)
         {
             _onStart = onStart;
@@ -224,6 +225,8 @@ public abstract class MiniStep
         public override void OnSuccess() => _onSuccess?.Invoke();
         public override void OnFail() => _onFail?.Invoke();
         public override void OnComplete(Result result) => _onCompleted?.Invoke(this);
+
+
         public override void Reset()
         {
             base.Reset();

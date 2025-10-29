@@ -8,10 +8,10 @@ public static class FindPathService
     /// <summary>
     /// 一个单位请求一次寻路
     /// </summary>
-    /// <param name="grid"></param>
-    /// <param name="pair"></param>
-    /// <param name="passableTypes"></param>
-    /// <param name="onEach"></param>
+    /// <param StepName="grid"></param>
+    /// <param StepName="pair"></param>
+    /// <param StepName="passableTypes"></param>
+    /// <param StepName="onEach"></param>
     public static void RequestOneFindPathImmediately(
         GridAsset grid,
         PathPair pair,
@@ -34,10 +34,10 @@ public static class FindPathService
     /// <summary>
     /// 请求一个寻路批次
     /// </summary>
-    /// <param name="grid"></param>
-    /// <param name="pairs"></param>
-    /// <param name="passableTypes"></param>
-    /// <param name="onEach"></param>
+    /// <param StepName="grid"></param>
+    /// <param StepName="pairs"></param>
+    /// <param StepName="passableTypes"></param>
+    /// <param StepName="onEach"></param>
     public static void RequestBatchFindPathImmediately(
         GridAsset grid,
         IReadOnlyList<PathPair> pairs,
@@ -58,10 +58,10 @@ public static class FindPathService
     /// <summary>
     /// 申请一次寻路（延迟寻路）
     /// </summary>
-    /// <param name="grid"></param>
-    /// <param name="pair"></param>
-    /// <param name="passableTypes"></param>
-    /// <param name="onDone"></param>
+    /// <param StepName="grid"></param>
+    /// <param StepName="pair"></param>
+    /// <param StepName="passableTypes"></param>
+    /// <param StepName="onDone"></param>
     public static void RequestFindPath(
         GridAsset grid,
         PathPair pair,

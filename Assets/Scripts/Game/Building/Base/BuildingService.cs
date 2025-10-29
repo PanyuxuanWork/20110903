@@ -68,12 +68,12 @@ public class BuildingService : MonoSingleton<BuildingService>
     /// <summary>
     /// 外部调用，开始建造
     /// </summary>
-    /// <param name="build">建筑资产</param>
-    /// <param name="grid">网格资产</param>
-    /// <param name="buildMask">可建造掩码</param>
-    /// <param name="OnBeforePlace">放之前调用</param>
-    /// <param name="OnAfterPlace">放置后调用</param>
-    /// <param name="isBatch">是否进行批量建造</param>
+    /// <param StepName="build">建筑资产</param>
+    /// <param StepName="grid">网格资产</param>
+    /// <param StepName="buildMask">可建造掩码</param>
+    /// <param StepName="OnBeforePlace">放之前调用</param>
+    /// <param StepName="OnAfterPlace">放置后调用</param>
+    /// <param StepName="isBatch">是否进行批量建造</param>
     /// <returns></returns>
     public bool StartBuilding(BuildAsset build, GridAsset grid, byte[] buildMask = null,
                               Action<BuildAsset, int> OnBeforePlace = null,
