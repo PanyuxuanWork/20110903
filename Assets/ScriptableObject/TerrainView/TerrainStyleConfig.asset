@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 258dc87ea5f4448469fa249d607f2be2, type: 3}
+  m_Name: TerrainStyleConfig
+  m_EditorClassIdentifier: 
+  entries:
+  - type: 10
+    style:
+      fillColor: {r: 0.1, g: 0.45, b: 1, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 0.25, g: 0.75, b: 1, a: 1}
+      borderOpacity: 0.9
+  - type: 11
+    style:
+      fillColor: {r: 1, g: 0.15, b: 0.12, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.45, b: 0.35, a: 1}
+      borderOpacity: 0.9
+  - type: 12
+    style:
+      fillColor: {r: 0.9, g: 0.75, b: 0.25, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.95, b: 0.45, a: 1}
+      borderOpacity: 0.9
+  - type: 20
+    style:
+      fillColor: {r: 0.15, g: 1, b: 0.25, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 0.55, g: 1, b: 0.55, a: 1}
+      borderOpacity: 0.9
+  - type: 21
+    style:
+      fillColor: {r: 1, g: 0.08, b: 0.08, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.45, b: 0.45, a: 1}
+      borderOpacity: 0.9
+  - type: 22
+    style:
+      fillColor: {r: 0.4, g: 0.4, b: 0.4, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 0.75, g: 0.75, b: 0.75, a: 1}
+      borderOpacity: 0.9
+  - type: 30
+    style:
+      fillColor: {r: 0.1, g: 0.9, b: 0.35, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 0.65, g: 1, b: 0.65, a: 1}
+      borderOpacity: 0.9
+  - type: 31
+    style:
+      fillColor: {r: 1, g: 0.15, b: 0.1, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.65, b: 0.45, a: 1}
+      borderOpacity: 0.9
+  - type: 32
+    style:
+      fillColor: {r: 1, g: 0.72, b: 0.15, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.95, b: 0.35, a: 1}
+      borderOpacity: 0.9
+  - type: 40
+    style:
+      fillColor: {r: 1, g: 1, b: 1, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 1, b: 1, a: 1}
+      borderOpacity: 0.9
+  - type: 50
+    style:
+      fillColor: {r: 1, g: 0.9, b: 0.15, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 1, b: 0.45, a: 1}
+      borderOpacity: 0.9
+  - type: 90
+    style:
+      fillColor: {r: 0.2, g: 1, b: 1, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 0.65, g: 1, b: 1, a: 1}
+      borderOpacity: 0.9
+  - type: 91
+    style:
+      fillColor: {r: 1, g: 0, b: 1, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.5, b: 1, a: 1}
+      borderOpacity: 0.9
+  - type: 92
+    style:
+      fillColor: {r: 1, g: 0.5, b: 0, a: 1}
+      fillOpacity: 0.65
+      borderColor: {r: 1, g: 0.8, b: 0.25, a: 1}
+      borderOpacity: 0.9

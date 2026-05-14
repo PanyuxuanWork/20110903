@@ -5,7 +5,30 @@ using UnityEngine;
 namespace Sim.Resources
 {
 
-    public enum ResourceId : byte { None = 0, Wood = 1, Stone = 2, Food = 3, Water = 4 }
+    public enum ResourceId : byte
+    {
+        None = 0, 
+        木头 = 1, 
+        石头 = 2,
+        食物 = 3, 
+        水 = 4
+    }
+
+    public static class EnumToString
+    {
+        public static string ConvertResourceID(ResourceId id)
+        {
+            switch (id)
+            {
+                case ResourceId.None: return null;
+                case ResourceId.木头: return STATICSTRING.C_WOOD; 
+                case ResourceId.石头: return STATICSTRING.C_STONE;
+                case ResourceId.水: return STATICSTRING.C_WATER;
+                case ResourceId.食物: return STATICSTRING.C_FOOD;
+            }
+            return null;
+        }
+    }
 
     public interface IResourceSlot
     {
@@ -22,8 +45,12 @@ namespace Sim.Resources
         [SerializeField] private ResourceId _id;
         [SerializeField] private int _capacity;
         [SerializeField] private int _amount;
-
-        public ResourceId Id => _id;
+        
+        public ResourceId Id
+        {
+            get => _id;
+            set => _id = value;
+        }
         public int Capacity => _capacity;
         public int Amount => _amount;
 
@@ -44,6 +71,19 @@ namespace Sim.Resources
             int can = Mathf.Min(amount, _amount);
             _amount -= can;
             return can;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="c">上限</param>
+        /// <param name="a">数量</param>
+        public void Reset(ResourceId id, int c, int a)
+        {
+            _id = id;
+            _capacity = c;
+            _amount = a;
         }
     }
 
@@ -68,7 +108,7 @@ namespace Sim.Resources
         int GetResource(int capTicket, int amount);
 
         // 槽位只用于本地生产/消费或 UI 展示（跨仓请走预约-提交）
-        IReadOnlyList<IResourceSlot> Slots { get; }
+        IReadOnlyList<FixedResourceSlot> Slots { get; }
 
         // 可选：底层原语，便于回滚/编辑器工具（跨仓正式流程仍走预约-提交）
         int AddToAnySlot(ResourceId id, int amount);

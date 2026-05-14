@@ -79,7 +79,7 @@ public static class ObPool<T> where T : class, new()
         if (reset != null)
         {
             try { reset(obj); }
-            catch (Exception ex) { /* swallow: reset should not throw */ }
+            catch (Exception ex) { TLog.Error($"ObPool Exception : {obj} ,{ex.Message}");}
         }
 
         lock (_lock)

@@ -1,6 +1,6 @@
 using System;
 using UnityEngine;
-
+using UnityEngine.UI;
 /// <summary>
 /// ID:2B
 /// [A15-A12][A11-A8][A8-A0] :  BuildingType,SubBuildingType,ID
@@ -10,10 +10,14 @@ using UnityEngine;
 [Serializable]
 public class BuildAsset : ScriptableObject
 {
+    public bool unlocked;
     public BuildMajor buildMajor;
     public BuildMinor buildMinor;
     public byte ID;
     public GameObject buildingPrefab;
     public GameObject ghostPrefab;
     public Vector2Int size;
+    public int Height;
+    public Sprite icon;
+    public string bname;
 }

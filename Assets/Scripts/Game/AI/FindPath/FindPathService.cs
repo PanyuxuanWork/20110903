@@ -63,12 +63,13 @@ public static class FindPathService
     /// <param StepName="passableTypes"></param>
     /// <param StepName="onDone"></param>
     public static void RequestFindPath(
+        int requesterID,
         GridAsset grid,
         PathPair pair,
         byte[] passableTypes,
         Action<int[]> onDone=null)
     {
-        PathfindingControlCenter.Instance.RequestPath(grid,pair.StartIndex,pair.GoalIndex,passableTypes,onDone);
+        PathfindingControlCenter.Instance.RequestPath(requesterID,grid,pair.StartIndex,pair.GoalIndex,passableTypes,onDone);
     }
 
 }

@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/21
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 
 using Sirenix.OdinInspector;
@@ -12,12 +12,12 @@ using UnityEngine;
 
 public class CodeViewDrawerDemo
 {
-    [LabelText("Code")]
+    [LabelText("professionType")]
     [CustomValueDrawer(nameof(DrawUShortHexBin))]
     public ushort code;
 
 #if UNITY_EDITOR
-    // 简易：并排两个输入框（Hex / Bin），改任一都会写回到 code。
+    // 简易：并排两个输入框（Hex / Bin），改任一都会写回到 professionType。
     private ushort DrawUShortHexBin(ushort value, GUIContent label)
     {
         GUILayout.BeginHorizontal();

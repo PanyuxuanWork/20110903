@@ -21,7 +21,6 @@ public class Test : MonoBehaviour
     {
         BuildingService.Instance.StartBuilding(
             asset,
-            GridContext.Grids[1],
             new byte[] { 1 },
             (a,b)=>{Debug.Log("Ç°");},
             (a,b)=>{ Debug.Log("ºó"); },

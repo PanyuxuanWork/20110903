@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 24f833c28605e554b9792ff94227a21b, type: 3}
   m_Name: Shop
   m_EditorClassIdentifier: 
-  buildingID: 0
-  buildingType: 0
+  buildMajor: 16
+  buildMinor: 35
+  ID: 1
   buildingPrefab: {fileID: 4518386072215235108, guid: 5f16396cde2528449be2079610e93ac7,
     type: 3}
   ghostPrefab: {fileID: 4518386072215235108, guid: 835dd7f9732cb0447926c7ed3088c3cf,
     type: 3}
   size: {x: 3, y: 4}
+  icon: {fileID: 0}
+  name: "\u8D27\u644A"

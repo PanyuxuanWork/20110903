@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a218766d532cd964fa2aed5ad0762efd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  worldGrid: {fileID: 11400000, guid: 7cc0d507dc7ac5e458283869031dc4c8, type: 2}
   Areas: []

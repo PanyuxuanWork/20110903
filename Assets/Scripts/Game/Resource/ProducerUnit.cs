@@ -1,366 +1,274 @@
+ï»¿/***************************************************************************
+// File       : ProductBuilding.cs
+// Author     : Panyuxuan
+// Created    : 2025/10/30
+// Copyright  : Â© 2025 SkyWander Games. All rights reserved.
+// Description: Reset script summary here
+// ***************************************************************************/
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Sim.Resources;
+using Sirenix.OdinInspector;
 
 /// <summary>
-/// Éú²úÕß£¨¹ÒÔÚÉú²ú½¨ÖşÉÏ£©£º
-/// - µäĞÍÉú²úÕß/Ïû·ÑÕßÄ£ĞÍ£»Ö§³Ö¡°ÎŞÔ­ÁÏÉú²ú¡±µÄ½¨Öş£¨ÈçË®¾®£©
-/// - È±ÁÏÊ±Ïò ProducerContext ÇëÇóÒ»ÅúÔ­ÁÏ£»²úÎïÓĞ´æÁ¿Ê±ÏòÍâÌá¹©¸ø Context »ØÊÕ
-/// - ÊäÈë/Êä³ö²Û¿ÉÔÚ Inspector µ÷Õû£»Ö§³ÖÅä·½
+/// ç”Ÿäº§è€…ï¼ˆæŒ‚åœ¨ç”Ÿäº§å»ºç­‘ä¸Šï¼‰ï¼š
+/// - å…¸å‹ç”Ÿäº§è€…/æ¶ˆè´¹è€…æ¨¡å‹ï¼›æ”¯æŒâ€œæ— åŸæ–™ç”Ÿäº§â€çš„å»ºç­‘ï¼ˆå¦‚æ°´äº•ï¼‰
+/// - ç¼ºæ–™æ—¶å‘ ProducerContext è¯·æ±‚ä¸€æ‰¹åŸæ–™ï¼›äº§ç‰©æœ‰å­˜é‡æ—¶å‘å¤–æä¾›ç»™ Context å›æ”¶
+/// - è¾“å…¥/è¾“å‡ºæ§½å¯åœ¨ Inspector è°ƒæ•´ï¼›æ”¯æŒé…æ–¹
 /// </summary>
 public class ProducerUnit : MonoBehaviour, IStepListener
 {
-    public enum State { Idle, WaitingInput, Working, OutputBlocked }
+    public enum State
+    {
+        Idle,
+        WaitingInput,
+        Working,
+        OutputBlocked,
+        WaitingEmployee
+    }
 
-    [Header("¹ØÁª")]
-    public ProducerContext context;         // ¿ÉÁô¿Õ£¬Awake Ê±×Ô¶¯²éÕÒ³¡¾°ÀïµÄ ProducerContext
-    public Storage inputStorage;       // Ô­ÁÏ²Û¼¯ºÏ£¨¿ÉÎª¿Õ£¬²»ĞèÒªÔ­ÁÏÊ±¿É²»¹Ò/²»Ê¹ÓÃ£©
-    public Storage outputStorage;      // ²úÎï²Û¼¯ºÏ£¨±ØĞë´æÔÚ£©
+    public List<Resident> EmployeeLists = new();
 
-    [Header("Åä·½£¨Ò»´Î¹¤Ğò£©")]
-    public Ingredient[] Inputs;             // ¿ÉÎª¿ÕÊı×é
-    public Ingredient[] Outputs;            // ÖÁÉÙÓ¦ÓĞÒ»ÖÖ£¬·ñÔòÎŞÒâÒå
+    [Header("å…³è”")]
+    public ProductionFlowHub context;
+    public Storage inputStorage;
+    public Storage outputStorage;
+
+    [Header("é…æ–¹ï¼ˆä¸€æ¬¡å·¥åºï¼‰")]
+    public Ingredient[] Inputs;
+    public Ingredient[] Outputs;
     [Min(0.01f)] public float WorkSeconds = 3f;
 
-    [Header("ÉÏÏÂÏŞ/ÅúÁ¿")]
-    [Tooltip("È±ÁÏÊ±Ïò Context ÇëÇóµÄÅúÁ¿ÉÏÏŞ£¨Ã¿´Îµ÷¶È£©")]
+    [Header("ä¸Šä¸‹é™/æ‰¹é‡")]
+    [Tooltip("ç¼ºæ–™æ—¶å‘ Context è¯·æ±‚çš„æ‰¹é‡ä¸Šé™ï¼ˆæ¯æ¬¡è°ƒåº¦ï¼‰")]
     public int InputRequestBatch = 64;
 
-    [Header("°áÔË/²¹»õãĞÖµ£¨<=0 ±íÊ¾½ûÓÃãĞÖµ£¬±£ÁôÔ­ĞĞÎª£©")]
-    [Tooltip("µ±ÈÎÒ»ÊäÈë×ÊÔ´µÄ¿â´æ < ¸ÃÖµÊ±£¬ProducerUnit »áÍ¨Öª Context È±ÁÏ£¨Ä¬ÈÏ 1£©¡£")]
+    [Header("æ¬è¿/è¡¥è´§é˜ˆå€¼ï¼ˆ<=0 è¡¨ç¤ºç¦ç”¨é˜ˆå€¼ï¼Œæ”¹ä¸ºæŒ‰é…æ–¹é¡¹ç›´æ¥åˆ¤æ–­ï¼‰")]
+    [Tooltip("å½“ä»»ä¸€è¾“å…¥èµ„æºçš„åº“å­˜ < è¯¥å€¼æ—¶ï¼ŒProducerUnit ä¼šé€šçŸ¥ Context ç¼ºæ–™ï¼ˆé»˜è®¤ 1ï¼‰ã€‚")]
     [SerializeField] public int InputRequestThreshold = 1;
 
-    [Tooltip("µ±ÈÎÒ»Êä³ö×ÊÔ´µÄ¿â´æ >= ¸ÃÖµÊ±£¬ProducerUnit »áÍ¨Öª Context ÓĞ²úÎï¿É°á£¨Ä¬ÈÏ 1£©¡£")]
+    [Tooltip("å½“ä»»ä¸€è¾“å‡ºèµ„æºçš„åº“å­˜ >= è¯¥å€¼æ—¶ï¼ŒProducerUnit ä¼šé€šçŸ¥ Context æœ‰äº§ç‰©å¯æ¬ï¼ˆé»˜è®¤ 1ï¼‰ã€‚")]
     [SerializeField] public int OutputOfferThreshold = 1;
 
-    [Header("ÈÕÖ¾")]
+    [Header("é€šçŸ¥èŠ‚æµ")]
+    [Tooltip("é¿å… WaitingInput / OutputBlocked çŠ¶æ€ä¸‹æ¯å¸§é‡å¤é€šçŸ¥ã€‚")]
+    [SerializeField] private float notifyCooldown = 0.5f;
+
+    [Header("æ—¥å¿—")]
     public bool EnableLogs = true;
 
+    public bool isOpen = true;
+
+    [ShowInInspector]
     public State Current { get; private set; } = State.Idle;
 
-    // ¶ÔÍâ±©Â¶ IStorage ÒÔ±ã Context µ÷ÓÃ
     public IStorage InputStorage => inputStorage;
     public IStorage OutputStorage => outputStorage;
 
-    // ÄÚ²¿
     private float _timer;
+    private float _nextInputNotifyAt;
+    private float _nextOutputNotifyAt;
 
     private void Awake()
     {
-        if (context == null) context = FindFirstObjectByType<ProducerContext>();
+        if (context == null)
+            context = FindFirstObjectByType<ProductionFlowHub>();
 
-        if (outputStorage == null)
-        {
-            outputStorage = new GameObject($"{name}_OutputStore").AddComponent<Storage>();
-            outputStorage.transform.SetParent(transform, false);
-            foreach (var v in Outputs)
-            {
-                outputStorage.AddOneSlot(v.Id, 100, 20);
-            }
-        }
-
-        // ÈôÓĞÊäÈëÅä·½µ«Ã»¹ÒÊäÈë²Ö£¬Ôò×Ô¶¯´´½¨
-        if (inputStorage == null && (Inputs != null && Inputs.Length > 0))
-        {
-            inputStorage = new GameObject($"{name}_InputStore").AddComponent<Storage>();
-            inputStorage.transform.SetParent(transform, false);
-            foreach (var v in Inputs)
-            {
-                inputStorage.AddOneSlot(v.Id, 100, 20);
-            }
-        }
-
-        // ÈÃ Context À´¶©ÔÄÊÂ¼ş
-        if (context != null) context.RegisterProducer(this);
+        EnsureStorages();
     }
 
     private void OnEnable()
     {
-        if (GlobalStep.Instance != null) // ¡û ·ÀÖ¹ÓòÖØÔØ/²¥·Å×´Ì¬ÇĞ»»Ê± NRE
+        if (GlobalStep.Instance != null)
             GlobalStep.Instance.AddListener(this);
+
+        if (context == null)
+            context = FindFirstObjectByType<ProductionFlowHub>();
+
+        context?.RegisterProducer(this);
     }
 
     private void OnDisable()
     {
         if (GlobalStep.Instance != null)
             GlobalStep.Instance.RemoveListener(this);
+
+        context?.UnregisterProducer(this);
     }
 
-    // ½¨Òé·Åµ½ÄãµÄÈ«¾Ö²½½øÖĞÍ³Ò»µ÷ÓÃ
+    /// <summary>
+    /// å…¨å±€æ­¥è¿›å…¥å£ã€‚
+    /// ç”Ÿäº§çŠ¶æ€ã€ç¼ºæ–™é€šçŸ¥ã€äº§å‡ºé˜»å¡æ¢å¤éƒ½åœ¨è¿™é‡Œæ¨è¿›ã€‚
+    /// </summary>
     public void Tick(float dt)
     {
+        if (!isOpen)
+            return;
+
+        if (!HasEmployee())
+        {
+            SetState(State.WaitingEmployee);
+            return;
+        }
+
         switch (Current)
         {
+            case State.WaitingEmployee:
+                {
+                    if (HasEmployee())
+                        SetState(State.Idle);
+                    break;
+                }
+
             case State.Idle:
                 {
                     if (CanStart())
                     {
-                        if (ConsumeInputsAtomically()) // Ô­ÁÏ³É¹¦ÏûºÄ
+                        if (ConsumeInputsAtomically())
                         {
                             _timer = WorkSeconds;
                             SetState(State.Working);
-                            LogLog($"¿ªÊ¼Éú²ú£¨{WorkSeconds:0.##}Ãë£©");
+                            LogLog($"å¼€å§‹ç”Ÿäº§ï¼ˆ{WorkSeconds:0.##}ç§’ï¼‰");
                         }
                         else
                         {
                             SetState(State.WaitingInput);
-                            if (ShouldNotifyNeeds()) TryNotifyNeeds();  // Ã»ÓĞÔ­ÁÏÊ±ÌáĞÑÉú²úÉÏÏÂÎÄ
+                            NotifyMissingInputsIfNeeded(force: true);
                         }
                     }
                     else
                     {
                         SetState(State.WaitingInput);
-                        TryNotifyNeeds(); TryNotifyNeeds();  // ÎŞÔ­ÁÏµÄÇé¿öÏÂ½øĞĞÈ±ÁÏÍ¨Öª
+                        NotifyMissingInputsIfNeeded(force: true);
                     }
+
                     break;
                 }
 
             case State.WaitingInput:
                 {
-                    // µÈ´ıÎïÁ÷²¹ÁÏ¡£²¹µ½Î»Ôò¿ª¹¤
                     if (CanStart() && ConsumeInputsAtomically())
                     {
                         _timer = WorkSeconds;
                         SetState(State.Working);
-                        LogLog("Ô­ÁÏµ½Î»£¬½øÈëÉú²ú¡£");
+                        LogLog("åŸæ–™åˆ°ä½ï¼Œè¿›å…¥ç”Ÿäº§ã€‚");
                     }
                     else
                     {
-                        TryNotifyNeeds(); TryNotifyNeeds();  // ¼ì²éÊÇ·ñÈ±ÁÏ
+                        NotifyMissingInputsIfNeeded(force: false);
                     }
+
                     break;
                 }
 
             case State.Working:
                 {
                     _timer -= dt;
-                    if (_timer <= 0f)
+                    if (_timer > 0f)
+                        break;
+
+                    if (TryStoreOutputs())
                     {
-                        if (TryStoreOutputs())
-                        {
-                            SetState(State.Idle);
-                            LogLog("Éú²úÍê³É²¢Èë¿â¡£");
-                            if(ShouldNotifyOffers())TryNotifyOffers(); // ¼ì²éÊÇ·ñÂú×ãÌá¹©Ìõ¼ş
-                        }
-                        else
-                        {
-                            SetState(State.OutputBlocked);
-                            LogWarn("²ú³öÊÜ×è£ºÊä³ö²ÖÎŞ¿Õ¼ä/²»½ÓÊÕ¡£");
-                            if (ShouldNotifyOffers()) TryNotifyOffers(); // ÌáĞÑ Context ÇåÀí²ú³ö
-                        }
+                        SetState(State.Idle);
+                        LogLog("ç”Ÿäº§å®Œæˆå¹¶å…¥åº“ã€‚");
+                        NotifyAvailableOutputsIfNeeded(force: true);
                     }
+                    else
+                    {
+                        SetState(State.OutputBlocked);
+                        LogWarn("äº§å‡ºå—é˜»ï¼šè¾“å‡ºä»“æ— ç©ºé—´/ä¸æ¥æ”¶ã€‚");
+                        NotifyAvailableOutputsIfNeeded(force: true);
+                    }
+
                     break;
                 }
 
             case State.OutputBlocked:
                 {
-                    // Èç¹ûÊä³ö²ÖÓĞ¿Õ¼äÔò»Ö¸´Éú²ú
                     if (TryStoreOutputs())
                     {
                         SetState(State.Idle);
-                        LogLog("×èÈû½â³ı¡£");
-                        if (ShouldNotifyOffers()) TryNotifyOffers(); // Èë¿â³É¹¦ºó¼ÌĞø¹©»õ
+                        LogLog("é˜»å¡è§£é™¤ã€‚");
+                        NotifyAvailableOutputsIfNeeded(force: true);
                     }
                     else
                     {
-                        if (ShouldNotifyOffers()) TryNotifyOffers();
+                        NotifyAvailableOutputsIfNeeded(force: false);
                     }
+
                     break;
                 }
         }
     }
 
-    private bool ShouldNotifyNeeds()
+    /// <summary>
+    /// æ˜¯å¦å…·å¤‡å¼€å·¥æ¡ä»¶ã€‚
+    /// æ”¯æŒâ€œæ— è¾“å…¥é…æ–¹â€çš„å»ºç­‘ã€‚
+    /// </summary>
+    public bool CanStart()
     {
-        // ãĞÖµ <= 0 ±íÊ¾²»ÆôÓÃãĞÖµ£¨±£³ÖÔ­ĞĞÎª£ºÊ¼ÖÕÍ¨Öª£©
-        if (InputRequestThreshold <= 0) return true;
+        if (Outputs == null || Outputs.Length == 0)
+            return false;
 
-        // ¼Ù¶¨ ProducerUnit ÓĞÒ»¸ö Inputs Êı×é£¨Åä·½ÊäÈë£©£¬Ã¿Ïî°üº¬ Id/Qty
-        // ²¢ÇÒÓĞÄ³ÖÖ·½Ê½ÄÜ²éÑ¯µ±Ç°¿â´æ×ÜÁ¿£¬±ÈÈç inputStorage.GetTotalAmount(id)
-        // Èç¹ûÄãµÄÏîÄ¿Àï°ÑÊäÈë·Ö²¼ÔÚ¶à¸ö storage£¬Çë°ÑÏÂÃæºÏ¼ÆÂß¼­¸ÄÎª¶ÔÓ¦ÊµÏÖ¡£
-        foreach (var inEntry in Inputs) // Inputs À´×ÔÄãµÄÅä·½×Ö¶Î
-        {
-            // ÕâÀïÓÃÒ»¸ö¼Ù¶¨µÄ inputStorage£ºÈôÄãÓĞ¶à¸ö input storages£¬ĞèÒª½«ÆäºÏ²¢ÇóºÍ
-            // ½«ÏÂÃæµÄ inputStorage.GetTotalAmount Ìæ»»ÎªÄãÏîÄ¿µÄÊµ¼Ê²éÑ¯·½·¨
-            int have = 0;
-            if (inputStorage != null) have = inputStorage.GetTotalAmount(inEntry.Id);
-            // Èç¹ûÈÎÒ»ÊäÈëÏîµÄÏÖÓĞ¿â´æ < ãĞÖµ£¬¾ÍÍ¨Öª²¹ÁÏ
-            if (have < InputRequestThreshold) return true;
-        }
-        return false;
-    }
+        if (Inputs == null || Inputs.Length == 0)
+            return true;
 
-    private bool ShouldNotifyOffers()
-    {
-        // ãĞÖµ <= 0 ±íÊ¾²»ÆôÓÃãĞÖµ£¨±£³ÖÔ­ĞĞÎª£ºÊ¼ÖÕÍ¨Öª£©
-        if (OutputOfferThreshold <= 0) return true;
-
-        // ¼Ù¶¨ Outputs Êı×éºÍ outputStorage ¿ÉÓÃ£¨°´ÄãµÄÊµÏÖÌæ»»£©
-        foreach (var outEntry in Outputs)
-        {
-            int have = 0;
-            if (outputStorage != null) have = outputStorage.GetTotalAmount(outEntry.Id);
-            if (have >= OutputOfferThreshold) return true;
-        }
-        return false;
-    }
-
-
-    // ====== Í¨Öª Context ======
-
-    private void TryNotifyNeeds()
-    {
-        context.AcceptOneInput(this, Inputs);
-    }
-
-    private void TryNotifyOffers()
-    {
-        context.AcceptOneOutput(this, Outputs);
-    }
-
-    
-
-    // ====== Éú²úÄÚºË ======
-
-    // ÊÇ·ñ¾ß±¸¿ª¹¤Ìõ¼ş£¨ÔÊĞí¡°ÎŞÔ­ÁÏÅä·½¡±£©
-    private bool CanStart()
-    {
-        if (Outputs == null || Outputs.Length == 0) return false; // Ã»ÓĞ²úÎï¾ÍÃ»±ØÒªÉú²ú
-        if (Inputs == null || Inputs.Length == 0) return true;   // ÎŞÔ­ÁÏĞÍ½¨Öş£¨ÈçË®¾®£©
-        if (inputStorage == null) return false;
+        if (inputStorage == null)
+            return false;
 
         for (int i = 0; i < Inputs.Length; i++)
         {
             var ing = Inputs[i];
-            if (ing.Id == ResourceId.None || ing.Qty <= 0) continue;
-            if (inputStorage.GetAvailable(ing.Id) < ing.Qty) return false;
-        }
-        return true;
-    }
+            if (!IsValidIngredient(ing))
+                continue;
 
-    // Ô­×ÓÏûºÄËùÓĞÊäÈë£¨Í¬Ò»½¨ÖşÄÚ²¿£¬Ö±½ÓÓÃ Add/Remove Ô­Óï£©
-    private bool ConsumeInputsAtomically()
-    {
-        if (Inputs == null || Inputs.Length == 0) return true; // ÎŞÔ­ÁÏÖ±½ÓÍ¨¹ı
-        if (inputStorage == null) return false;
-
-        for (int i = 0; i < Inputs.Length; i++)
-        {
-            var ing = Inputs[i];
-            if (ing.Id == ResourceId.None || ing.Qty <= 0) continue;
-
-            int removed = inputStorage.RemoveFromAnySlot(ing.Id, ing.Qty);
-            if (removed < ing.Qty)
-            {
-                // »Ø¹öÖ®Ç°ÒÑ¿ÛµÄ
-                for (int j = 0; j < i; j++)
-                {
-                    var back = Inputs[j];
-                    if (back.Id == ResourceId.None || back.Qty <= 0) continue;
-                    inputStorage.AddToAnySlot(back.Id, back.Qty);
-                }
+            if (inputStorage.GetAvailable(ing.Id) < ing.Qty)
                 return false;
-            }
         }
+
         return true;
     }
 
-    // ½«²úÎïĞ´ÈëÊä³ö²Ö£»Èç¹ûÒ»´ÎĞ´²»ÏÂ£¬Ê§°Ü£¨µÈÎïÁ÷Çå¿ÕºóÖØÊÔ£©
-    private bool TryStoreOutputs()
-    {
-        if (Outputs == null || Outputs.Length == 0 || outputStorage == null) return false;
-
-        // Ô¤¼ì²éÈİÁ¿
-        for (int i = 0; i < Outputs.Length; i++)
-        {
-            var p = Outputs[i];
-            if (p.Id == ResourceId.None || p.Qty <= 0) continue;
-            if (!outputStorage.CanAccept(p.Id)) return false;
-            if (outputStorage.GetFreeCapacity(p.Id) < p.Qty) return false;
-        }
-
-        // ÕæÕıĞ´Èë
-        for (int i = 0; i < Outputs.Length; i++)
-        {
-            var p = Outputs[i];
-            if (p.Id == ResourceId.None || p.Qty <= 0) continue;
-
-            int put = outputStorage.AddToAnySlot(p.Id, p.Qty);
-            if (put < p.Qty)
-            {
-                // ¼«¶Ë²¢·¢£º»Ø¹öÒÑĞ´
-                for (int j = 0; j < i; j++)
-                {
-                    var back = Outputs[j];
-                    outputStorage.RemoveFromAnySlot(back.Id, back.Qty);
-                }
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void SetState(State s)
-    {
-        if (s == Current) return;
-        var prev = Current;
-        Current = s;
-        LogLog($"×´Ì¬ {prev} ¡ú {Current}");
-    }
-
-    // ====== ±ã½İÅäÖÃ ======
-    [ContextMenu("¸ù¾İÅä·½×Ô¶¯ÅäÖÃ²ÛÎ»Óë°×Ãûµ¥")]
+    /// <summary>
+    /// æ ¹æ®å½“å‰é…æ–¹è‡ªåŠ¨é…ç½®è¾“å…¥/è¾“å‡ºä»“ä½ã€‚
+    /// </summary>
+    [ContextMenu("æ ¹æ®é…æ–¹è‡ªåŠ¨é…ç½®æ§½ä½ä¸ç™½åå•")]
     public void AutoConfigureSlots()
     {
-        if (outputStorage == null)
-        {
-            outputStorage = new GameObject($"{name}_OutputStore").AddComponent<Storage>();
-            outputStorage.transform.SetParent(transform, false);
-        }
-        if (inputStorage == null && Inputs != null && Inputs.Length > 0)
-        {
-            inputStorage = new GameObject($"{name}_InputStore").AddComponent<Storage>();
-            inputStorage.transform.SetParent(transform, false);
-        }
+        EnsureStorages();
 
-        // ÊäÈë²Û
         if (inputStorage != null && Inputs != null)
         {
             var defs = new List<(ResourceId, int, int)>();
-            var wl = new List<ResourceId>();
             foreach (var ing in Inputs)
             {
-                if (ing.Id == ResourceId.None || ing.Qty <= 0) continue;
+                if (!IsValidIngredient(ing))
+                    continue;
+
                 defs.Add((ing.Id, Mathf.Max(ing.Qty * 3, 1), 0));
-                wl.Add(ing.Id);
             }
+
             inputStorage.ConfigureSlots(defs.ToArray());
-            inputStorage.SetAcceptWhitelist(wl.ToArray());
         }
 
-        // Êä³ö²Û
-        if (Outputs != null)
+        if (outputStorage != null && Outputs != null)
         {
             var defs = new List<(ResourceId, int, int)>();
-            var wl = new List<ResourceId>();
             foreach (var p in Outputs)
             {
-                if (p.Id == ResourceId.None || p.Qty <= 0) continue;
+                if (!IsValidIngredient(p))
+                    continue;
+
                 defs.Add((p.Id, Mathf.Max(p.Qty * 3, 1), 0));
-                wl.Add(p.Id);
             }
+
             outputStorage.ConfigureSlots(defs.ToArray());
-            outputStorage.SetAcceptWhitelist(wl.ToArray());
         }
 
-        LogLog("ÒÑ¸ù¾İÅä·½×Ô¶¯ÅäÖÃ²ÛÎ»Óë°×Ãûµ¥¡£");
+        LogLog("å·²æ ¹æ®é…æ–¹è‡ªåŠ¨é…ç½®æ§½ä½ã€‚");
     }
-
-    // ====== ÈÕÖ¾ ======
-    private void LogLog(string msg) { if (EnableLogs) TLog.Log(this, msg); }
-    private void LogWarn(string msg) { if (EnableLogs) TLog.Warning(this, msg); }
-    private void LogDebug(string msg) { if (EnableLogs) TLog.Log(this, msg); } // ¡û ±ÜÃâ°Ñ¡°µ÷ÊÔ¡±µ± Error
 
     public int Priority { get; set; }
     public bool IsActive { get; set; } = true;
@@ -368,6 +276,311 @@ public class ProducerUnit : MonoBehaviour, IStepListener
     public void OnTick(in TickContext ctx)
     {
         Tick(ctx.DeltaTime);
+    }
+
+    private void EnsureStorages()
+    {
+        if (outputStorage == null)
+        {
+            outputStorage = new GameObject($"{name}_OutputStore").AddComponent<Storage>();
+            outputStorage.transform.SetParent(transform, false);
+        }
+
+        if (inputStorage == null && Inputs != null && Inputs.Length > 0)
+        {
+            inputStorage = new GameObject($"{name}_InputStore").AddComponent<Storage>();
+            inputStorage.transform.SetParent(transform, false);
+        }
+
+        if (outputStorage != null && Outputs != null)
+        {
+            foreach (var v in Outputs)
+            {
+                if (!IsValidIngredient(v))
+                    continue;
+
+                TryEnsureSlot(outputStorage, v.Id, Mathf.Max(v.Qty * 3, 1), 77);
+            }
+        }
+
+        if (inputStorage != null && Inputs != null)
+        {
+            foreach (var v in Inputs)
+            {
+                if (!IsValidIngredient(v))
+                    continue;
+
+                TryEnsureSlot(inputStorage, v.Id, Mathf.Max(v.Qty * 3, 1), 30);
+            }
+        }
+    }
+
+    private bool HasEmployee()
+    {
+        return EmployeeLists != null && EmployeeLists.Count > 0;
+    }
+
+    private bool ConsumeInputsAtomically()
+    {
+        if (Inputs == null || Inputs.Length == 0)
+            return true;
+
+        if (inputStorage == null)
+            return false;
+
+        for (int i = 0; i < Inputs.Length; i++)
+        {
+            var ing = Inputs[i];
+            if (!IsValidIngredient(ing))
+                continue;
+
+            int removed = inputStorage.RemoveFromAnySlot(ing.Id, ing.Qty);
+            if (removed < ing.Qty)
+            {
+                for (int j = 0; j < i; j++)
+                {
+                    var back = Inputs[j];
+                    if (!IsValidIngredient(back))
+                        continue;
+
+                    inputStorage.AddToAnySlot(back.Id, back.Qty);
+                }
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool TryStoreOutputs()
+    {
+        if (Outputs == null || Outputs.Length == 0 || outputStorage == null)
+            return false;
+
+        for (int i = 0; i < Outputs.Length; i++)
+        {
+            var p = Outputs[i];
+            if (!IsValidIngredient(p))
+                continue;
+
+            if (!outputStorage.CanAccept(p.Id))
+                return false;
+
+            if (outputStorage.GetFreeCapacity(p.Id) < p.Qty)
+                return false;
+        }
+
+        for (int i = 0; i < Outputs.Length; i++)
+        {
+            var p = Outputs[i];
+            if (!IsValidIngredient(p))
+                continue;
+
+            int put = outputStorage.AddToAnySlot(p.Id, p.Qty);
+            if (put < p.Qty)
+            {
+                for (int j = 0; j < i; j++)
+                {
+                    var back = Outputs[j];
+                    if (!IsValidIngredient(back))
+                        continue;
+
+                    outputStorage.RemoveFromAnySlot(back.Id, back.Qty);
+                }
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void NotifyMissingInputsIfNeeded(bool force)
+    {
+        if (context == null)
+            return;
+
+        float now = Time.unscaledTime;
+        if (!force && now < _nextInputNotifyAt)
+            return;
+
+        var list = CollectMissingInputs();
+        try
+        {
+            if (list.Count == 0)
+                return;
+
+            for (int i = 0; i < list.Count; i++)
+                TryNotifyNeed(list[i]);
+
+            _nextInputNotifyAt = now + Mathf.Max(0.05f, notifyCooldown);
+        }
+        finally
+        {
+            ObPool<List<Ingredient>>.Release(list);
+        }
+    }
+
+    private void NotifyAvailableOutputsIfNeeded(bool force)
+    {
+        if (context == null)
+            return;
+
+        float now = Time.unscaledTime;
+        if (!force && now < _nextOutputNotifyAt)
+            return;
+
+        var list = CollectAvailableOutputs();
+        try
+        {
+            if (list.Count == 0)
+                return;
+
+            for (int i = 0; i < list.Count; i++)
+                TryNotifyOffer(list[i]);
+
+            _nextOutputNotifyAt = now + Mathf.Max(0.05f, notifyCooldown);
+        }
+        finally
+        {
+            ObPool<List<Ingredient>>.Release(list);
+        }
+    }
+
+    private List<Ingredient> CollectMissingInputs()
+    {
+        var list = ObPool<List<Ingredient>>.Get();
+        list.Clear();
+
+        if (Inputs == null || Inputs.Length == 0)
+            return list;
+
+        for (int i = 0; i < Inputs.Length; i++)
+        {
+            var inEntry = Inputs[i];
+            if (!IsValidIngredient(inEntry))
+                continue;
+
+            int have = inputStorage != null ? inputStorage.GetTotalAmount(inEntry.Id) : 0;
+
+            if (InputRequestThreshold <= 0)
+            {
+                if (have < inEntry.Qty)
+                    list.Add(inEntry);
+            }
+            else
+            {
+                if (have < InputRequestThreshold)
+                    list.Add(inEntry);
+            }
+        }
+
+        return list;
+    }
+
+    private List<Ingredient> CollectAvailableOutputs()
+    {
+        var list = ObPool<List<Ingredient>>.Get();
+        list.Clear();
+
+        if (Outputs == null || Outputs.Length == 0)
+            return list;
+
+        for (int i = 0; i < Outputs.Length; i++)
+        {
+            var outEntry = Outputs[i];
+            if (!IsValidIngredient(outEntry))
+                continue;
+
+            int have = outputStorage != null ? outputStorage.GetTotalAmount(outEntry.Id) : 0;
+
+            if (OutputOfferThreshold <= 0)
+            {
+                if (have > 0)
+                    list.Add(outEntry);
+            }
+            else
+            {
+                if (have >= OutputOfferThreshold)
+                    list.Add(outEntry);
+            }
+        }
+
+        return list;
+    }
+
+    private void TryNotifyNeed(Ingredient v)
+    {
+        if (context == null || !IsValidIngredient(v))
+            return;
+
+        context.AcceptOneInput(this, new[] { v });
+        LogDebug($"å·²é€šçŸ¥ç¼ºæ–™ï¼š{v.Id} x{v.Qty}");
+    }
+
+    private void TryNotifyOffer(Ingredient v)
+    {
+        if (context == null || !IsValidIngredient(v))
+            return;
+
+        context.AcceptOneOutput(this, new[] { v });
+        LogDebug($"å·²é€šçŸ¥ä¾›è´§ï¼š{v.Id} x{v.Qty}");
+    }
+
+    private static bool IsValidIngredient(Ingredient ing)
+    {
+        return ing.Id != ResourceId.None &&  ing.Qty > 0;
+    }
+
+    private static void TryEnsureSlot(Storage storage, ResourceId id, int capacity, int order)
+    {
+        if (storage == null)
+            return;
+
+        var slots = storage.Slots;
+        if (slots != null)
+        {
+            for (int i = 0; i < slots.Count; i++)
+            {
+                var slot = slots[i];
+                if (slot == null)
+                    continue;
+
+                if (slot.Id == id)
+                    return;
+            }
+        }
+
+        storage.AddOneSlot(id, capacity, order);
+    }
+
+    private void SetState(State s)
+    {
+        if (s == Current)
+            return;
+
+        var prev = Current;
+        Current = s;
+        LogLog($"çŠ¶æ€ {prev} â†’ {Current}");
+    }
+
+    private void LogLog(string msg)
+    {
+        if (EnableLogs)
+            TLog.Log(this, msg);
+    }
+
+    private void LogWarn(string msg)
+    {
+        if (EnableLogs)
+            TLog.Warning(this, msg);
+    }
+
+    private void LogDebug(string msg)
+    {
+        if (EnableLogs)
+            TLog.Log(this, msg);
     }
 }
 [Serializable]
@@ -393,13 +606,14 @@ public struct Ingredient : IEquatable<Ingredient>
 }
 
 [Serializable]
-public struct NeedResource : IEquatable<NeedResource>
+public class NeedResource : IEquatable<NeedResource>
 {
-    public ResourceId id;
-    public int Qty;
-    public NeedResourceState Status;
+    [ShowInInspector] public ResourceId id;
+    [ShowInInspector] public int Qty;
+    [ShowInInspector] public NeedResourceState Status;
 
-    public NeedResource(ResourceId _id,int _qty,NeedResourceState _state)
+
+    public NeedResource(ResourceId _id, int _qty, NeedResourceState _state)
     {
         id = _id;
         Qty = _qty;
@@ -413,10 +627,12 @@ public struct NeedResource : IEquatable<NeedResource>
         Status = NeedResourceState.WaitingServe;
     }
 
-
     public bool Equals(NeedResource other)
     {
-        return id == other.id && Qty == other.Qty;
+        if (other is null)
+            return false;
+
+        return id == other.id && Qty == other.Qty && Status == other.Status;
     }
 
     public override bool Equals(object obj)
@@ -426,7 +642,7 @@ public struct NeedResource : IEquatable<NeedResource>
 
     public override int GetHashCode()
     {
-        return HashCode.Combine((int)id, Qty);
+        return HashCode.Combine((int)id, Qty, (int)Status);
     }
 
 
@@ -436,5 +652,6 @@ public enum NeedResourceState
 {
     WaitingServe,
     Processing,
-    Completed
+    Completed,
+    Requested
 }

@@ -1,6 +1,5 @@
+
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(Storage))]
@@ -13,4 +12,5 @@ public class Warehouse : BuildingBase
         base.Awake();
         storage = GetComponent<Storage>();
     }
+
 }

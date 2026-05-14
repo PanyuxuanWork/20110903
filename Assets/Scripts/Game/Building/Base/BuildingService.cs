@@ -1,11 +1,29 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using JetBrains.Annotations;
 using UnityEngine;
+
+public struct HitInfo
+{
+    public Vector3 Pos;
+    public BuildAsset asset;
+    public Area area;
+}
+
+public class BuildCheckContext
+{
+    public Area cArea;
+    public Vector3 cPos;
+    public BuildAsset asset;
+    public string msg;
+}
 
 /// <summary>
 /// 建造系统服务（自定义 Layer：buildMask=允许建造的 passableType 集合）
 /// 规则：仅当格子的 grid.passableType[idx] 被包含在 buildMask 中，并且不为 7（占用），才允许建造（显示绿色）。
 /// </summary>
+[RequireComponent(typeof(BuildingCheckBeforePlace))]
 public class BuildingService : MonoSingleton<BuildingService>
 {
     [Header("输入与交互")]
@@ -14,9 +32,8 @@ public class BuildingService : MonoSingleton<BuildingService>
     public KeyCode rotateLeftKey = KeyCode.Q;      // 左转 90°
     public KeyCode rotateRightKey = KeyCode.E;     // 右转 90°
 
-    [Header("拾取与高度")]
     [Tooltip("拾取未命中时，会回退到与 y=yLevel 的水平面相交，不依赖任何 Collider")]
-    public float yLevel = 0f;                      // 放置高度（XZ 平面）
+    public float yLevel;// 放置高度（XZ 平面）
 
     [Header("Ghost 外观反馈")]
     public bool tintGhostByValidity = true;        // 根据合法性着色 ghost
@@ -35,8 +52,9 @@ public class BuildingService : MonoSingleton<BuildingService>
 
     // ---------------- 全局事件（可多处订阅） ----------------
     public event Action<bool> OnBuildingModeChanged;           // true=进入，false=退出
-    public event Action<BuildAsset, int> OnBeforePlaceGlobal;  // 放置前
-    public event Action<BuildAsset, int> OnAfterPlaceGlobal;   // 放置后
+    public event Action<BuildAsset, HitInfo> OnBeforePlaceGlobal;  // 放置前
+    public event Action<BuildAsset, HitInfo> OnAfterPlaceGlobal;   // 放置后
+    private readonly List<Func<BuildCheckContext,bool>> _globalPlaceCheckFunc=new();
 
     // 运行态
     private GridAsset _grid;
@@ -51,18 +69,17 @@ public class BuildingService : MonoSingleton<BuildingService>
     private Action<BuildAsset, int> _oneShotBeforePlace;
     private Action<BuildAsset, int> _oneShotAfterPlace;
 
-    // ---------------- 对外 API ----------------
-
-    protected override void Awake()
-    {
-        base.Awake();
-        IsPlacing = false;
-    }
+    #region 外部API
 
     public void SelectBuild(BuildAsset asset)
     {
         if (asset == null) { TLog.Error("SelectBuild 传入的 BuildAsset 为空"); return; }
         _selectedBuild = asset;
+    }
+
+    public bool StartBuilding(BuildAsset asset, Action<BuildAsset, int> beforeAction)
+    {
+        return StartBuilding(asset, null, beforeAction);
     }
 
     /// <summary>
@@ -75,14 +92,14 @@ public class BuildingService : MonoSingleton<BuildingService>
     /// <param StepName="OnAfterPlace">放置后调用</param>
     /// <param StepName="isBatch">是否进行批量建造</param>
     /// <returns></returns>
-    public bool StartBuilding(BuildAsset build, GridAsset grid, byte[] buildMask = null,
+    public bool StartBuilding(BuildAsset build, byte[] buildMask = null,
                               Action<BuildAsset, int> OnBeforePlace = null,
                               Action<BuildAsset, int> OnAfterPlace = null,
                               bool isBatch = false)
     {
-        if (build == null || grid == null)
+        if (build == null)
         {
-            TLog.Error(this, "StartBuilding 失败：BuildAsset / GridAsset 为空");
+            TLog.Error(this, "StartBuilding 失败：BuildAsset 为空");
             return false;
         }
 
@@ -91,11 +108,10 @@ public class BuildingService : MonoSingleton<BuildingService>
 
         if (buildMask == null || buildMask.Length == 0)
         {
-            TLog.Warning(this, "StartBuilding：buildMask 为空或长度为 0，将导致所有格不允许建造（仅占用=7 也会被拦）");
+            buildMask = BuildingMask.Road;
         }
 
         _selectedBuild = build;
-        _grid = grid;
         _buildMaskSet = buildMask;     // 允许的 passableType 集合
         _oneShotBeforePlace = OnBeforePlace;
         _oneShotAfterPlace = OnAfterPlace;
@@ -149,7 +165,20 @@ public class BuildingService : MonoSingleton<BuildingService>
         OnBuildingModeChanged?.Invoke(false);
     }
 
-    // ---------------- Unity 生命周期 ----------------
+
+
+    #endregion
+
+    protected override void Awake()
+    {
+        base.Awake();
+        IsPlacing = false;
+    }
+
+    private IEnumerator Start()
+    {
+        yield return null;
+    }
 
     private void Update()
     {
@@ -158,8 +187,7 @@ public class BuildingService : MonoSingleton<BuildingService>
         HandleRotateAndConfirm();
     }
 
-    // ---------------- 内部实现 ----------------
-
+    #region 内部实现
     private void UpdateGhostPoseAndHoverIndex()
     {
         Vector3 world;
@@ -167,7 +195,20 @@ public class BuildingService : MonoSingleton<BuildingService>
         {
             _hoverCellIndex = -1;
             SetGhostTint(invalidColor);
+            Debug.Log("未获取到有效的鼠标世界坐标，Ghost 设置为无效颜色");
             return;
+        }
+
+        var hitGrid = AreaContext.Instance.FindGridAssetByVector3(world);
+        if (hitGrid == null)
+        {
+            _grid = null;
+        }
+        if (hitGrid != null && _grid != hitGrid)
+        {
+            _grid = hitGrid;
+            yLevel = world.y; // 更新放置高度
+            Debug.Log($"找到新的网格：{_grid.name}");
         }
 
         int x, z;
@@ -177,7 +218,7 @@ public class BuildingService : MonoSingleton<BuildingService>
             _hoverCellIndex = idx;
 
             Vector3 center = _grid.IndexToWorldCenter(idx);
-            center.y = yLevel;
+            center.y = world.y;
             ApplyGhostTRS(center, Quaternion.Euler(0f, 90f * _ghostRotationSteps, 0f));
 
             // 预判合法性 + 可视化
@@ -186,41 +227,53 @@ public class BuildingService : MonoSingleton<BuildingService>
             bool valid = ValidateFootprint(footprint, out reason);
             SetGhostTint(valid ? validColor : invalidColor);
             DrawFootprint(footprint);
+
         }
         else
         {
+            Debug.Log("未命中有效格子");
             _hoverCellIndex = -1;
             SetGhostTint(invalidColor);
         }
     }
 
+
     private bool TryGetMouseWorld(out Vector3 world)
     {
         Camera cam = Camera.main;
         world = default;
-        if (cam == null) return false;
+        if (cam == null)
+        {
+            Debug.LogError("没有找到主相机！");
+            return false;
+        }
 
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
 
         // 1) 试图命中任意 Collider（不使用 Unity Layer）
         RaycastHit hit;
-        if (Physics.Raycast(ray, out hit, 10000f))
+        if (Physics.Raycast(ray, out hit, 10000f, 1 << 12))
         {
-            world = hit.point; world.y = yLevel;
+
+            world = hit.point;
             return true;
         }
 
         // 2) 回退：与 y=yLevel 的水平面相交
-        Plane plane = new Plane(Vector3.up, new Vector3(0f, yLevel, 0f));
-        float dist;
-        if (plane.Raycast(ray, out dist))
-        {
-            world = ray.GetPoint(dist);
-            world.y = yLevel;
-            return true;
-        }
+        /* Plane plane = new Plane(Vector3.up, new Vector3(0f, yLevel, 0f));
+         float dist;
+         if (plane.Raycast(ray, out dist))
+         {
+             world = ray.GetPoint(dist);
+             world.y = yLevel;
+             Debug.Log($"命中水平面，位置：{world}");
+             return true;
+         }*/
+
+        Debug.LogError("没有命中任何有效位置！");
         return false;
     }
+
 
     private void HandleRotateAndConfirm()
     {
@@ -248,24 +301,89 @@ public class BuildingService : MonoSingleton<BuildingService>
 
     private bool PlaceBuilding(BuildAsset asset)
     {
-        if (!IsPlacing) { TLog.Warning(this, "PlaceBuilding 调用时不在建造模式"); return false; }
-        if (asset == null || _grid == null) { TLog.Error(this, "PlaceBuilding 失败：BuildAsset 或 GridAsset 为空"); return false; }
-        if (_hoverCellIndex < 0) { TLog.Warning(this, "PlaceBuilding 失败：鼠标未指向有效格"); return false; }
 
+        // 确保当前处于建造模式
+        if (!IsPlacing)
+        {
+            TLog.Warning(this, "PlaceBuilding 调用时不在建造模式");
+            Debug.LogWarning("尝试放置建筑时，不在建造模式！");
+            return false;
+        }
+
+        // 检查建筑和网格是否有效
+        if (asset == null || _grid == null)
+        {
+            TLog.Error(this, "PlaceBuilding 失败：BuildAsset 或 GridAsset 为空");
+            Debug.LogError("放置失败：BuildAsset 或 GridAsset 为空！");
+            return false;
+        }
+
+        // 确保鼠标指向了有效的格子
+        if (_hoverCellIndex < 0)
+        {
+            TLog.Warning(this, "PlaceBuilding 失败：鼠标未指向有效格");
+            Debug.LogWarning("放置失败：鼠标未指向有效格！");
+            return false;
+        }
+
+        // 获取建筑占用的格子
         List<int> footprint = CollectFootprintIndicesCentered(_hoverCellIndex, asset.size, _ghostRotationSteps);
         string reason;
         if (!ValidateFootprint(footprint, out reason))
         {
             SetGhostTint(invalidColor);
             TLog.Warning(this, $"放置非法：{reason}");
+            Debug.LogWarning($"放置非法：{reason}");
             return false;
         }
 
-        // —— 放置前（一次性 + 全局）——
+        
+
+
+        // 计算放置位置和旋转角度
+        Vector3 worldPos = _grid.IndexToWorldCenter(_hoverCellIndex);
+        worldPos.y = yLevel;
+        Quaternion rot = Quaternion.Euler(0f, 90f * _ghostRotationSteps, 0f);
+
+        var area = AreaContext.Instance.FindAreaByVector3(worldPos);
+
+        //外部可建造判断检测
+        BuildCheckContext context = new BuildCheckContext()
+        {
+            cArea = area,
+            cPos = worldPos,
+            asset = asset
+        };
+        if (!CheckBeforePlace(context))
+        {
+            return false;
+        }
+        
+        if (area == null)
+        {
+            TLog.Error(this, $"{asset.bname}放止位置非法，位置:{worldPos}");
+        }
+
+        // 确保建筑物的 prefab 存在
+        if (asset.buildingPrefab == null)
+        {
+            TLog.Error(this, "PlaceBuilding 失败：BuildAsset.buildingPrefab 为空");
+            Debug.LogError("放置失败：BuildAsset.buildingPrefab 为空");
+            return false;
+        }
+
+        HitInfo info = new HitInfo()
+        {
+            Pos = worldPos,
+            area = area,
+            asset = asset
+        };
+
+        // --- 放置前的操作（一次性 + 全局） ---
         try
         {
             _oneShotBeforePlace?.Invoke(asset, _hoverCellIndex);
-            OnBeforePlaceGlobal?.Invoke(asset, _hoverCellIndex);
+            OnBeforePlaceGlobal?.Invoke(asset, info);
         }
         catch (Exception e)
         {
@@ -273,52 +391,47 @@ public class BuildingService : MonoSingleton<BuildingService>
             return false;
         }
 
-        // 计算放置位置与旋转
-        Vector3 worldPos = _grid.IndexToWorldCenter(_hoverCellIndex);
-        worldPos.y = yLevel;
-        Quaternion rot = Quaternion.Euler(0f, 90f * _ghostRotationSteps, 0f);
-
-        if (asset.buildingPrefab == null)
-        {
-            TLog.Error(this, "PlaceBuilding 失败：BuildAsset.buildingPrefab 为空");
-            return false;
-        }
+        // 实例化建筑物
         GameObject go = Instantiate(asset.buildingPrefab, worldPos, rot);
         go.name = $"Building_{asset.buildingPrefab.name}";
 
-        //注册
+        // 注册建筑物
         RegisterBuilding(asset, _grid, go);
 
-        // 标记占用：占用的格子 passableType 设为 7
+        // 更新网格状态，标记占用的格子
         for (int i = 0; i < footprint.Count; i++)
         {
             int idx = footprint[i];
-            _grid.passableType[idx] = 7;
+            _grid.passableType[idx] = 7;  // 7表示占用
         }
+
         TLog.Log(this, $"放置成功：占用 {footprint.Count} 格，中心Index={_hoverCellIndex}，旋转={_ghostRotationSteps * 90}°");
 
-        // —— 放置后（一次性 + 全局）——
+        // --- 放置后的操作（一次性 + 全局） ---
         try
         {
             _oneShotAfterPlace?.Invoke(asset, _hoverCellIndex);
-            OnAfterPlaceGlobal?.Invoke(asset, _hoverCellIndex);
+            OnAfterPlaceGlobal?.Invoke(asset, info);
         }
         catch (Exception e)
         {
             TLog.Error(this, $"OnAfterPlace 执行异常：{e}");
         }
 
-        // 批量或单次
+        // 批量建造或单次建造
         if (_isBatch)
         {
             SetGhostTint(validColor); // 继续放置
         }
         else
         {
-            ExitBuildingMode();       // 单次：放置后退出
+            ExitBuildingMode();       // 单次：放置后退出建造模式
         }
+
         return true;
     }
+
+
 
     private void ApplyGhostTRS(Vector3 pos, Quaternion rot)
     {
@@ -354,7 +467,10 @@ public class BuildingService : MonoSingleton<BuildingService>
 
         int sx = size.x;
         int sz = size.y;
-        if ((rotSteps & 1) == 1) { int t = sx; sx = sz; sz = t; }
+        if ((rotSteps & 1) == 1)
+        {
+            (sx, sz) = (sz, sx);
+        }
 
         int cx = centerIndex % w;
         int cz = centerIndex / w;
@@ -473,4 +589,38 @@ public class BuildingService : MonoSingleton<BuildingService>
         }
         return false;
     }
+
+
+    #endregion
+
+
+    #region Check
+
+    private bool CheckBeforePlace(BuildCheckContext c)
+    {
+        foreach (var v in _globalPlaceCheckFunc)
+        {
+            try
+            {
+                if (!v.Invoke(c))
+                {
+                    UILog.Instance.ShowError(this,c.msg);
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                TLog.Error(this,$"放置前检测异常，异常信息{e.Message}");
+                throw;
+            }
+        }
+        return true;
+    }
+
+    public void RegisterBeforeAction(Func<BuildCheckContext,bool> f)
+    {
+        _globalPlaceCheckFunc.Add(f);
+    }
+
+    #endregion
 }

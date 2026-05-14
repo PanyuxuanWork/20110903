@@ -26,22 +26,17 @@ public interface IStepListener
     void OnTick(in TickContext ctx);
 }
 
-/// <summary>
-/// 全局步进系统（接口式），继承你的 MonoSingleton。
-/// 支持异步/跨线程投递：后台线程完成后把逻辑回到下一次 Tick 的主线程执行。
-/// </summary>
+
 [DefaultExecutionOrder(-1000)]
 public class GlobalStep : MonoSingleton<GlobalStep>
 {
-    [Header("Tick Settings")]
-    [Tooltip("单个 Tick 的模拟时长（秒）。例如 0.02 ≈ 50 Tick/s")]
+    [Header("Tick Settings")] [Tooltip("单个 Tick 的模拟时长（秒）。例如 0.02 ≈ 50 Tick/g")]
     public float tickSeconds = 0.02f;
 
-    [Tooltip("播放速率：1=正常，0=暂停，2=两倍速")]
-    [Range(0f, 4f)] public float timeScale = 1f;
+    [Tooltip("播放速率：1=正常，0=暂停，2=两倍速")] [Range(0f, 4f)]
+    public float timeScale = 1f;
 
-    [Tooltip("每帧最多推进的 Tick 数，防止卡顿雪崩")]
-    public int maxTicksPerFrame = 8;
+    [Tooltip("每帧最多推进的 Tick 数，防止卡顿雪崩")] public int maxTicksPerFrame = 8;
 
     [Tooltip("卡顿时是否丢弃多余积压 Tick（true=丢弃保持实时性；false=尽可能补齐）")]
     public bool dropExcessTicks = true;
@@ -113,8 +108,14 @@ public class GlobalStep : MonoSingleton<GlobalStep>
         {
             var l = _listeners[i];
             if (l == null || !l.IsActive) continue;
-            try { l.OnTick(in ctx); }
-            catch (Exception e) { Debug.LogException(e); }
+            try
+            {
+                l.OnTick(in ctx);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         _tickIndex++;
@@ -128,8 +129,14 @@ public class GlobalStep : MonoSingleton<GlobalStep>
     {
         while (_mainThreadQueue.TryDequeue(out var a))
         {
-            try { a?.Invoke(); }
-            catch (Exception e) { Debug.LogException(e); }
+            try
+            {
+                a?.Invoke();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
     }
 
@@ -176,7 +183,8 @@ public class GlobalStep : MonoSingleton<GlobalStep>
     /// <summary>
     /// 支持取消令牌的异步投递：外部可调用 CancelAllAsync() 取消未完成任务。
     /// </summary>
-    public async void PostAsync(Func<CancellationToken, Task> asyncWork, Action onDone = null, Action<Exception> onError = null)
+    public async void PostAsync(Func<CancellationToken, Task> asyncWork, Action onDone = null,
+        Action<Exception> onError = null)
     {
         try
         {
@@ -201,8 +209,13 @@ public class GlobalStep : MonoSingleton<GlobalStep>
     /// <summary>取消所有通过 PostAsync 提交且尚未完成的后台任务。</summary>
     public void CancelAllAsync()
     {
-        try { _cts?.Cancel(); }
-        catch { }
+        try
+        {
+            _cts?.Cancel();
+        }
+        catch
+        {
+        }
         finally
         {
             _cts?.Dispose();
@@ -215,3 +228,5 @@ public class GlobalStep : MonoSingleton<GlobalStep>
     public void SetTimeScale(float scale) => timeScale = Mathf.Max(0f, scale);
     public void Pause(bool pause) => timeScale = pause ? 0f : 1f;
 }
+
+

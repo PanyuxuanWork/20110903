@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/28
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 
 using System.Collections;

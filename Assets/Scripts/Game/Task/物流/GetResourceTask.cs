@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/26
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // **************************************************************************/
 
 using UnityEngine;
@@ -45,14 +45,5 @@ public class GetResourceTask : TaskBase
         return t;
     }
 
-    protected override void Reset()
-    {
-        base.Reset();
-        resident = null;
-        storage = null;
-        storageTicket = 0;
-        residentTicket = 0;
-        storage = null;
-    }
 }
 

@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 24f833c28605e554b9792ff94227a21b, type: 3}
   m_Name: Warehouse
   m_EditorClassIdentifier: 
-  buildingID: 0
-  buildingType: 0
+  buildMajor: 16
+  buildMinor: 4
+  ID: 2
   buildingPrefab: {fileID: 2896263833638745292, guid: 719488e0143217748a059b27368b6738,
     type: 3}
   ghostPrefab: {fileID: 2896263833638745292, guid: 8d7c23bc3faea10468c427a9593bda2e,
     type: 3}
   size: {x: 3, y: 4}
+  icon: {fileID: 0}
+  name: "\u4ED3\u5E93"

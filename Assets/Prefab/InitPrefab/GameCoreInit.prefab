@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2592249621744691019}
   - component: {fileID: 2333677595301995694}
+  - component: {fileID: 2384084933620629976}
   m_Layer: 0
   m_Name: GameCoreInit
   m_TagString: Untagged
@@ -48,3 +49,15 @@ MonoBehaviour:
   timeScale: 1
   maxTicksPerFrame: 8
   dropExcessTicks: 1
+--- !u!114 &2384084933620629976
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 636908656579142371}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49b4ab3f3e2450d4c8affb9cfadd56a5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

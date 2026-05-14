@@ -45,19 +45,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _slots:
-  - _id: 1
-    _capacity: 0
-    _amount: 100
-  - _id: 2
-    _capacity: 0
-    _amount: 100
-  - _id: 3
-    _capacity: 0
-    _amount: 100
-  - _id: 4
-    _capacity: 0
-    _amount: 100
-  _acceptWhitelist: 
+  - _id: 0
+    _capacity: 100
+    _amount: 0
   _enableTtl: 1
   _defaultTtlSeconds: 300
 --- !u!1 &6900213118810129719
@@ -76,6 +66,7 @@ GameObject:
   - component: {fileID: 1880750164477130427}
   - component: {fileID: 2826403966416996814}
   - component: {fileID: 7955003447231116645}
+  - component: {fileID: -7636467300150932754}
   m_Layer: 0
   m_Name: Resident
   m_TagString: Untagged
@@ -183,6 +174,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Model: {fileID: 0}
+  _historyCapacity: 64
+  FailurePolicy: 3
 --- !u!114 &1880750164477130427
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -195,7 +188,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69f050c3056344b4cb69f2e6b56851a2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  code: 4096
+  type: 0
 --- !u!114 &2826403966416996814
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -209,13 +202,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Id: 
+  rName: 
   CanAccept: 1
+  Gender: 0
   GirdID: 0
   ParentArea: {fileID: 0}
   taskService: {fileID: 0}
-  profession: {fileID: 0}
+  professionComp: {fileID: 0}
   economyService: {fileID: 0}
-  backpack: {fileID: 0}
+  backpack: {fileID: 4260783118448592521}
+  curState: 0
+  workHouse: {fileID: 0}
 --- !u!114 &7955003447231116645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -230,5 +227,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   reservationTtlSec: 300
   navigationGrid: {fileID: 11400000, guid: cc4c8da41dcabb7409082a5a327b99e5, type: 2}
-  passMask: 01
+  passMask: 01000203040506070809
   backpack: {fileID: 4260783118448592521}
+  defaultCarryAmount: 100
+--- !u!114 &-7636467300150932754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6900213118810129719}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f856c9bf1d3f1947855171b0e24377b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isFirstClick: 1

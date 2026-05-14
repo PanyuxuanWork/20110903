@@ -1,25 +1,29 @@
-﻿using System;
-using Sim.Resources;
+﻿using Sim.Resources;
+using System;
+using System.Collections.Generic;
+using Sirenix.OdinInspector;
 using UnityEngine;
 
-public class CarryFromWarehouseToProduce : TaskBase
+public sealed class CarryFromWarehouseToProduce : TaskBase
 {
     public Resident resident;
-    public Storage sourceStorage;      // 仓库（来源）
-    public ProducerUnit unit;          // 目标生产单元
+    public Storage sourceStorage;          // 仓库（来源）
+    public ProducerUnit unit;              // 生产单元（目标）
     public ResourceId id;
     public int amount;
 
-    // 外部传入的票据（由外层先预约好）
-    public int storageTicket;   // 来源仓库的 goods ticket（出库）
-    public int residentTicket;  // 目标生产单元 input 的 capacity ticket（入库）
+    public int storageGoodsTicket;         // 仓库出库票据（已预约）
+    public int unitCapTicket;              // Unit.input 容量票据（已预约）
 
-    // 内部状态
-    private MoveToTask _moveToStorage;
-    private MoveToTask _moveToProducer;
+    private int backpackCapTicket;         // 背包容量票据
+    private int backpackGoodsTicket;       // 背包出库票据（背包 -> Unit.input）
+    private int _moved;                    // 实际装包/运输量
 
-    private bool _hasTakenFromStorage = false;
-    private int _takenAmount = 0;
+    [ShowInInspector]
+    private readonly List<MiniStep> _steps = new List<MiniStep>();
+
+    private int _cursor = -1;
+    private bool _rollbackDone;
 
     public static CarryFromWarehouseToProduce Create(
         Resident resident,
@@ -27,266 +31,449 @@ public class CarryFromWarehouseToProduce : TaskBase
         ProducerUnit unit,
         ResourceId id,
         int amount,
-        int storageTicket,
-        int residentTicket)
+        int storageGoodsTicket,
+        int unitCapTicket)
     {
         var t = new CarryFromWarehouseToProduce();
         t.resident = resident;
         t.sourceStorage = sourceStorage;
         t.unit = unit;
         t.id = id;
-        t.amount = amount;
-        t.storageTicket = storageTicket;
-        t.residentTicket = residentTicket;
+        t.amount = Mathf.Max(0, amount);
+        t.storageGoodsTicket = storageGoodsTicket;
+        t.unitCapTicket = unitCapTicket;
         return t;
     }
 
     protected override void OnStart()
     {
-        if (resident == null || sourceStorage == null || unit == null || id == ResourceId.None || amount <= 0)
+        if (resident?.economyService == null ||
+            resident.economyService.backpack == null ||
+            sourceStorage == null ||
+            unit?.inputStorage == null ||
+            id == ResourceId.None ||
+            amount <= 0 ||
+            storageGoodsTicket == 0 ||
+            unitCapTicket == 0)
         {
-            Fail();
+            Fail("CarryFromWarehouseToProduce: invalid task parameters");
             return;
         }
 
-        try
-        {
-            var passMask = resident.economyService?.passMask ?? new byte[] { 1 };
-            _moveToStorage = MoveToTask.Create(resident, sourceStorage.transform, passMask);
-            _moveToStorage.Completed += OnArrivedStorage;
-            resident.taskService.Enqueue(_moveToStorage,true);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogException(ex);
-            Fail();
-        }
-    }
+        var pass = resident.economyService.passMask ?? new byte[] { 1 };
 
-    private void OnArrivedStorage(TaskBase t, TaskResult result)
-    {
-        try { t.Completed -= OnArrivedStorage; } catch { }
+        _steps.Add(new ReserveBackpackCapacityStep(
+            "预约背包容量",
+            resident,
+            id,
+            amount,
+            ticket => backpackCapTicket = ticket,
+            _ => { }));
 
-        if (result != TaskResult.Succeeded)
-        {
-            TryRollbackAndFail("Move to storage failed or cancelled");
-            return;
-        }
+        _steps.Add(MoveToStep.Create(
+            "前往仓库",
+            resident,
+            sourceStorage.transform.position,
+            pass));
 
-        try
-        {
-            var storage = sourceStorage as IStorage;
-            if (storage == null)
-            {
-                TryRollbackAndFail("Source storage is invalid");
-                return;
-            }
+        _steps.Add(new TransferFromSourceToBackpackStep(
+            "装载到背包",
+            resident,
+            sourceStorage,
+            id,
+            amount,
+            () => storageGoodsTicket,
+            () => backpackCapTicket,
+            moved => _moved = moved));
 
-            // 从仓库出库（使用外部提供的 storageTicket）
-            int taken = storage.OfferResource(storageTicket, amount);
-            if (taken <= 0)
-            {
-                TryRollbackAndFail($"OfferResource returned 0 (ticket={storageTicket}, amount={amount})");
-                return;
-            }
+        _steps.Add(new ReserveBackpackGoodsStep(
+            "预约背包出库",
+            resident,
+            id,
+            () => _moved,
+            ticket => backpackGoodsTicket = ticket));
 
-            // 放入 resident 背包（外层曾为背包预约 capacity 或者背包已预留；此处仍然假定有 capacity）
-            var backpack = resident.backpack as IStorage;
-            if (backpack == null)
-            {
-                // 尝试把货放回仓库
-                TryReturnToStorage(storage, id, taken);
-                TryRollbackAndFail("Resident backpack invalid");
-                return;
-            }
+        _steps.Add(MoveToStep.Create(
+            "前往生产单元",
+            resident,
+            unit.transform.position,
+            pass));
 
-            int added = backpack.AddToAnySlot(id, taken);
-            _hasTakenFromStorage = true;
-            _takenAmount = added;
+        _steps.Add(new TransferFromBackpackToUnitInputStep(
+            "卸货到 Unit.input",
+            resident,
+            unit,
+            id,
+            () => _moved,
+            () => backpackGoodsTicket,
+            () => unitCapTicket));
 
-            if (added != taken)
-            {
-                // 未能全部放入背包 -> 尝试把剩余放回仓库并回滚
-                int leftover = taken - added;
-                TryReturnToStorage(storage, id, leftover);
-                TryRollbackAndFail($"Backpack accepted only {added}/{taken}, rolled back");
-                return;
-            }
+        foreach (var s in _steps)
+            s.Completed += OnStepCompleted;
 
-            // 成功拿货并放入背包，开始移动到生产单元
-            var passMask = resident.economyService?.passMask ?? new byte[] { 1 };
-            _moveToProducer = MoveToTask.Create(resident, unit.transform, passMask);
-            _moveToProducer.Completed += OnArrivedProducer;
-            resident.taskService.Enqueue(_moveToProducer);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogException(ex);
-            TryRollbackAndFail("Exception while taking resource from storage: " + ex.Message);
-        }
-    }
-
-    private void OnArrivedProducer(TaskBase t, TaskResult result)
-    {
-        try { t.Completed -= OnArrivedProducer; } catch { }
-
-        if (result != TaskResult.Succeeded)
-        {
-            TryRollbackAndFail("Move to producer failed or cancelled");
-            return;
-        }
-
-        try
-        {
-            var backpack = resident.backpack as IStorage;
-            var input = unit.inputStorage as IStorage;
-            if (backpack == null || input == null)
-            {
-                TryRollbackAndFail("Backpack or unit inputStorage invalid");
-                return;
-            }
-
-            int wantToPut = Math.Min(_takenAmount > 0 ? _takenAmount : amount, amount);
-            if (wantToPut <= 0)
-            {
-                TryRollbackAndFail("No cargo to put to producer");
-                return;
-            }
-
-            int removed = backpack.RemoveFromAnySlot(id, wantToPut);
-            if (removed <= 0)
-            {
-                TryRollbackAndFail("Failed to remove items from backpack");
-                return;
-            }
-
-            // 把货放入生产单元的 inputStorage (使用 residentTicket 作为 capacity ticket)
-            int accepted = input.GetResource(residentTicket, removed);
-            if (accepted < removed)
-            {
-                // 部分被接受 -> 将剩余尝试放回背包（best-effort）
-                int leftover = removed - accepted;
-                int ret = backpack.AddToAnySlot(id, leftover);
-                if (ret < leftover)
-                {
-                    Debug.LogWarning($"[CarryToProduce] Failed to return {leftover - ret} items back to backpack after partial put.");
-                }
-            }
-
-            if (accepted > 0)
-            {
-                resident.ParentArea.producerContext.NotifyInputCompleted(unit, resident.economyService, id, accepted);
-            }
-            else
-            {
-                resident.ParentArea.producerContext.NotifyInputFailed(unit, resident.economyService, id, removed);
-            }
-
-
-            Succeed();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogException(ex);
-            TryRollbackAndFail("Exception while putting resource to producer: " + ex.Message);
-        }
-    }
-
-    private void TryReturnToStorage(IStorage storage, ResourceId resId, int amountToReturn)
-    {
-        try
-        {
-            if (storage != null && amountToReturn > 0)
-            {
-                storage.AddToAnySlot(resId, amountToReturn);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[CarryToProduce] Failed to return {amountToReturn}x{resId} back to storage: {ex.Message}");
-        }
-    }
-
-    private void TryRollbackAndFail(string reason)
-    {
-        Debug.LogWarning("[CarryToProduce] Rollback and fail: " + reason);
-
-        // 回滚预约（best-effort）
-        try
-        {
-            if (sourceStorage != null && storageTicket != 0)
-            {
-                try { (sourceStorage as IStorage)?.CancelGoodsReserve(storageTicket); } catch { }
-            }
-        }
-        catch { }
-
-        try
-        {
-            if (unit?.inputStorage != null && residentTicket != 0)
-            {
-                try { (unit.inputStorage as IStorage)?.CancelCapacityReserve(residentTicket); } catch { }
-            }
-        }
-        catch { }
-
-        // 如果已经从仓库拿走了一些货物但尚未成功放入生产单元，尽量把货放回仓库（best-effort）
-        try
-        {
-            if (_hasTakenFromStorage && _takenAmount > 0 && sourceStorage != null)
-            {
-                TryReturnToStorage(sourceStorage as IStorage, id, _takenAmount);
-            }
-        }
-        catch { }
-
-        Fail();
+        StartNext();
     }
 
     protected override bool OnUpdate(float dt)
     {
-        // 主逻辑通过 MoveToTask 的回调完成，OnUpdate 无需额外工作
+        if (_cursor < 0 || _cursor >= _steps.Count)
+            return false;
+
+        _steps[_cursor].OnUpdate(dt);
         return false;
     }
 
-    protected override void OnCancel()
+    private void OnStepCompleted(MiniStep step, MiniStep.Result result)
     {
-        try
+        if (result == MiniStep.Result.Succeeded)
         {
-            if (_moveToStorage != null && !_moveToStorage.IsDone)
-            {
-                try { _moveToStorage.Cancel(); } catch { }
-                try { _moveToStorage.Completed -= OnArrivedStorage; } catch { }
-            }
+            StartNext();
         }
-        catch { }
-
-        try
+        else
         {
-            if (_moveToProducer != null && !_moveToProducer.IsDone)
-            {
-                try { _moveToProducer.Cancel(); } catch { }
-                try { _moveToProducer.Completed -= OnArrivedProducer; } catch { }
-            }
+            TryRollback();
+            Fail($"{step.StepName} failed");
         }
-        catch { }
-
-        TryRollbackAndFail("Canceled");
     }
 
-    protected override void Reset()
+    private void StartNext()
     {
-        base.Reset();
-        resident = null;
-        sourceStorage = null;
-        unit = null;
-        id = ResourceId.None;
-        amount = 0;
-        storageTicket = 0;
-        residentTicket = 0;
-        _moveToStorage = null;
-        _moveToProducer = null;
-        _hasTakenFromStorage = false;
-        _takenAmount = 0;
+        _cursor++;
+
+        if (_cursor >= _steps.Count)
+        {
+            resident?.economyService?.ReleaseEmptyBackpackSlotsToNone();
+
+            var hub = resident?.ParentArea?.productionFlowHub;
+            hub?.NotifyInputCompleted(unit, id, amount);
+
+            TLog.Log($"[CarryFromWarehouseToProduce] Completed: {amount} x {id}");
+            Succeed();
+            return;
+        }
+
+        _steps[_cursor].OnStart();
+    }
+
+    private void TryRollback()
+    {
+        if (_rollbackDone)
+            return;
+
+        _rollbackDone = true;
+
+        try
+        {
+            if (_moved > 0 &&
+                resident?.economyService?.backpack is Storage bp &&
+                sourceStorage != null)
+            {
+                int taken = bp.RemoveFromAnySlot(id, _moved);
+                if (taken > 0)
+                    sourceStorage.AddToAnySlot(id, taken);
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (sourceStorage is IStorage s1 && storageGoodsTicket != 0)
+                s1.CancelGoodsReserve(storageGoodsTicket);
+        }
+        catch { }
+
+        try
+        {
+            if (unit?.inputStorage is IStorage s2 && unitCapTicket != 0)
+                s2.CancelCapacityReserve(unitCapTicket);
+        }
+        catch { }
+
+        try
+        {
+            if (resident?.economyService != null && backpackCapTicket != 0)
+                resident.economyService.CancelBackpackCapacityReserve(backpackCapTicket);
+        }
+        catch { }
+
+        try
+        {
+            if (resident?.economyService?.backpack is IStorage s4 && backpackGoodsTicket != 0)
+                s4.CancelGoodsReserve(backpackGoodsTicket);
+        }
+        catch { }
+
+        try
+        {
+            resident?.economyService?.ReleaseEmptyBackpackSlotsToNone();
+        }
+        catch { }
+
+        try
+        {
+            var hub = resident?.ParentArea?.productionFlowHub;
+            hub?.NotifyInputFailed(unit, id, amount);
+        }
+        catch { }
+    }
+
+    protected override void OnCompletedInternal(TaskResult result)
+    {
+        if (result.IsFailed)
+            TryRollback();
+        else
+            resident?.economyService?.ReleaseEmptyBackpackSlotsToNone();
+
+        foreach (var s in _steps)
+            s.Completed -= OnStepCompleted;
+
+        _steps.Clear();
+    }
+
+    // ========================== Steps ==========================
+
+    private sealed class ReserveBackpackCapacityStep : MiniStep
+    {
+        public override string StepName { get; set; }
+
+        private readonly Resident _resident;
+        private readonly ResourceId _id;
+        private readonly int _amount;
+        private readonly Action<int> _onSuccess;
+        private readonly Action<string> _onFail;
+
+        public ReserveBackpackCapacityStep(
+            string name,
+            Resident resident,
+            ResourceId id,
+            int amount,
+            Action<int> onSuccess,
+            Action<string> onFail)
+        {
+            StepName = name;
+            _resident = resident;
+            _id = id;
+            _amount = amount;
+            _onSuccess = onSuccess;
+            _onFail = onFail;
+        }
+
+        public override void OnStart()
+        {
+            var eco = _resident?.economyService;
+            if (eco == null)
+            {
+                string msg = "ResidentEconomyService is null";
+                _onFail?.Invoke(msg);
+                Fail(msg);
+                return;
+            }
+
+            if (eco.TryReserveBackpackCapacity(_id, _amount, out int ticket, eco.reservationTtlSec))
+            {
+                _onSuccess?.Invoke(ticket);
+                Succeed();
+            }
+            else
+            {
+                string msg = $"TryReserveBackpackCapacity failed. id={_id}, amount={_amount}";
+                _onFail?.Invoke(msg);
+                Fail(msg);
+            }
+        }
+
+        public override bool OnUpdate(float dt) => false;
+    }
+
+    private sealed class TransferFromSourceToBackpackStep : MiniStep
+    {
+        public override string StepName { get; set; }
+
+        private readonly Resident _resident;
+        private readonly Storage _source;
+        private readonly ResourceId _id;
+        private readonly int _want;
+        private readonly Func<int> _goodsTicketGetter;
+        private readonly Func<int> _bpCapTicketGetter;
+        private readonly Action<int> _onMoved;
+
+        public TransferFromSourceToBackpackStep(
+            string name,
+            Resident resident,
+            Storage source,
+            ResourceId id,
+            int want,
+            Func<int> goodsTicketGetter,
+            Func<int> bpCapTicketGetter,
+            Action<int> onMoved)
+        {
+            StepName = name;
+            _resident = resident;
+            _source = source;
+            _id = id;
+            _want = want;
+            _goodsTicketGetter = goodsTicketGetter;
+            _bpCapTicketGetter = bpCapTicketGetter;
+            _onMoved = onMoved;
+        }
+
+        public override void OnStart()
+        {
+            var bp = _resident?.economyService?.backpack as Storage;
+            if (bp == null || _source == null)
+            {
+                Fail("backpack or source is null");
+                return;
+            }
+
+            int goodsTicket = _goodsTicketGetter();
+            if (goodsTicket == 0)
+            {
+                Fail("source goods ticket is invalid");
+                return;
+            }
+
+            int removed = _source.OfferResource(goodsTicket, _want);
+            if (removed <= 0)
+            {
+                Fail("source.OfferResource <= 0");
+                return;
+            }
+
+            int bpCapTicket = _bpCapTicketGetter();
+            if (bpCapTicket == 0)
+            {
+                _source.AddToAnySlot(_id, removed);
+                Fail("backpack capacity ticket is invalid");
+                return;
+            }
+
+            int accepted = bp.GetResource(bpCapTicket, removed);
+            if (accepted < removed)
+            {
+                int leftover = removed - accepted;
+                if (leftover > 0)
+                    _source.AddToAnySlot(_id, leftover);
+            }
+
+            _onMoved?.Invoke(accepted);
+
+            if (accepted > 0)
+                Succeed();
+            else
+                Fail("accepted <= 0");
+        }
+
+        public override bool OnUpdate(float dt) => false;
+    }
+
+    private sealed class ReserveBackpackGoodsStep : MiniStep
+    {
+        public override string StepName { get; set; }
+
+        private readonly Resident _resident;
+        private readonly ResourceId _id;
+        private readonly Func<int> _movedGetter;
+        private readonly Action<int> _onSuccess;
+
+        public ReserveBackpackGoodsStep(
+            string name,
+            Resident resident,
+            ResourceId id,
+            Func<int> movedGetter,
+            Action<int> onSuccess)
+        {
+            StepName = name;
+            _resident = resident;
+            _id = id;
+            _movedGetter = movedGetter;
+            _onSuccess = onSuccess;
+        }
+
+        public override void OnStart()
+        {
+            int moved = _movedGetter();
+            var bp = _resident?.economyService?.backpack as IStorage;
+
+            if (moved > 0 && bp != null &&
+                bp.TryReserveResource(_id, moved, out int ticket, 10f))
+            {
+                _onSuccess?.Invoke(ticket);
+                Succeed();
+            }
+            else
+            {
+                Fail("TryReserveResource on backpack failed");
+            }
+        }
+
+        public override bool OnUpdate(float dt) => false;
+    }
+
+    private sealed class TransferFromBackpackToUnitInputStep : MiniStep
+    {
+        public override string StepName { get; set; }
+
+        private readonly Resident _resident;
+        private readonly ProducerUnit _unit;
+        private readonly ResourceId _id;
+        private readonly Func<int> _movedGetter;
+        private readonly Func<int> _goodsTicketGetter;
+        private readonly Func<int> _unitCapTicketGetter;
+
+        public TransferFromBackpackToUnitInputStep(
+            string name,
+            Resident resident,
+            ProducerUnit unit,
+            ResourceId id,
+            Func<int> movedGetter,
+            Func<int> goodsTicketGetter,
+            Func<int> unitCapTicketGetter)
+        {
+            StepName = name;
+            _resident = resident;
+            _unit = unit;
+            _id = id;
+            _movedGetter = movedGetter;
+            _goodsTicketGetter = goodsTicketGetter;
+            _unitCapTicketGetter = unitCapTicketGetter;
+        }
+
+        public override void OnStart()
+        {
+            int moved = _movedGetter();
+
+            var bp = _resident?.economyService?.backpack as Storage;
+            var dst = _unit?.inputStorage as Storage;
+
+            if (bp == null || dst == null || moved <= 0)
+            {
+                Fail("invalid backpack / dst / moved");
+                return;
+            }
+
+            int off = bp.OfferResource(_goodsTicketGetter(), moved);
+            if (off <= 0)
+            {
+                Fail("backpack.OfferResource <= 0");
+                return;
+            }
+
+            int put = dst.GetResource(_unitCapTicketGetter(), off);
+            if (put < off)
+            {
+                int leftover = off - put;
+                if (leftover > 0)
+                    bp.AddToAnySlot(_id, leftover);
+
+                Fail("dst.GetResource partial");
+                return;
+            }
+
+            _resident?.economyService?.ReleaseEmptyBackpackSlotsToNone();
+            Succeed();
+        }
+
+        public override bool OnUpdate(float dt) => false;
     }
 }

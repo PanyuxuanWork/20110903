@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using UnityEngine;
 using System.Collections.Generic;
 using Sirenix.OdinInspector;
@@ -7,9 +9,10 @@ public class BuildingContext : MonoBehaviour
     public Area ParentArea;
     // K: 唯一32位键(高8=Major, 次8=Minor, 再8=AssetID, 低8=InstanceID)
     [ShowInInspector]
-    public Dictionary<uint, GameObject> Buildings=new();
+    public Dictionary<uint, GameObject> Buildings = new();
     // K: 基键(低8清零)  V: 下次要使用的实例ID（作为“累计创建次数”）
-    private Dictionary<uint, byte> Counts=new();
+    private Dictionary<uint, byte> Counts = new();
+    public Dictionary<BuildMinor, HashSet<GameObject>> Type_Buildings_Dic = new();
 
     private void Awake()
     {
@@ -17,14 +20,31 @@ public class BuildingContext : MonoBehaviour
         Counts ??= new Dictionary<uint, byte>(256);
     }
 
+    #region 内部API
 
     /// <summary>
     /// 你的“累计次数=实例ID”的策略：第一次分配 0，之后递增。
     /// </summary>
     public uint RegisterBuilding(BuildAsset build, GameObject go, bool tryReuseOnOverflow = true)
     {
+        var nullList = new List<uint>();
+        foreach (var v in Buildings)
+        {
+            if (v.Value.Equals(null))
+                nullList.Add(v.Key);
+            if (v.Value.Equals(go))
+                return 0000;
+        }
+
+        foreach (var v in nullList)
+        {
+            Buildings.Remove(v);
+        }
+
+        go.transform.SetParent(this.transform);
+
         // 低8位清零，得到 baseKey
-        uint baseKey = BuildCode32.Encode(build.buildMajor, build.buildMinor, build.ID, 0x00) & 0xFFFFFF00u;
+        uint baseKey = BuildingTypeManager.Encode(build.buildMajor, build.buildMinor, build.ID, 0x00) & 0xFFFFFF00u;
 
         // 当前计数（即将要用作 InstanceID 的值），默认 0
         byte nextId = 0;
@@ -55,6 +75,18 @@ public class BuildingContext : MonoBehaviour
             }
         }
 
+
+        var vv = Type_Buildings_Dic;
+        if (vv.ContainsKey(build.buildMinor))
+        {
+            var set = vv.GetValueOrDefault(build.buildMinor) ?? new HashSet<GameObject>();
+            if (!set.Add(go))
+            {
+                TLog.Error(this, $"初始化失败，{go.name}建筑已经被注册过");
+                return 0;
+            }
+        }
+        
         Buildings[uniqueKey] = go;
 
         // 计数 +1；到 255 后不再增长（避免 byte 回绕到 0）
@@ -100,4 +132,35 @@ public class BuildingContext : MonoBehaviour
         freeId = 0;
         return false;
     }
+
+    #endregion
+
+    public bool GetOneVacantHouse(out Build_House house, out string reason)
+    {
+        reason = "";
+        house = null;
+        var set = Type_Buildings_Dic.GetValueOrDefault(BuildMinor.小型住宅);
+        if (set == null)
+        {
+            reason = "未发现建筑小屋的集合";
+            return false;
+        }
+
+        foreach (var v in set)
+        {
+            if (v.TryGetComponent(out Build_House tempHouse))
+            {
+                if (tempHouse.Residents.Count < tempHouse.ResidentAmount)
+                {
+                    house = tempHouse;
+                    reason = "Success";
+                    return true;
+                }
+            }
+        }
+
+        reason = "所有房屋均已住满";
+        return false;
+    }
+
 }

@@ -41,7 +41,7 @@ public static class TLog
         if (showInConsole)
         {
             string colorTag = ColorToString(color);
-            Debug.Log($"<color={colorTag}>[{module}]</color> {message}");
+            Debug.Log($"<color={colorTag}>[{module}]{message}</color> ");
         }
 #endif
         if (writeInFile)

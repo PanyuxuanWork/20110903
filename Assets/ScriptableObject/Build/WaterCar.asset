@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 24f833c28605e554b9792ff94227a21b, type: 3}
   m_Name: WaterCar
   m_EditorClassIdentifier: 
-  buildingID: 0
-  buildingType: 0
+  buildMajor: 80
+  buildMinor: 0
+  ID: 3
   buildingPrefab: {fileID: 8681033655019677861, guid: 152a6a065c7308447bd2149b2e6dcd37,
     type: 3}
   ghostPrefab: {fileID: 8681033655019677861, guid: 53f18d9b389b8ee4792f6597eff5d282,
     type: 3}
   size: {x: 3, y: 4}
+  icon: {fileID: 0}
+  name: "\u751F\u4EA7\u5EFA\u7B51\u6D4B\u8BD5"

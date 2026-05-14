@@ -6,7 +6,7 @@ using System.Collections.Generic;
 /// 全局网格注册表：按 GridAsset.ID(1..255) 建立 O(1) 索引。
 /// - 仅保留一个静态数组做查询真源；Inspector 里用 List 配置初始资产。
 /// - Awake 时一次性重建索引，不再在数组/列表之间来回拷贝。
-/// - 提供 Get/TryGet/Reload/校验；可选运行时 Register。
+/// - 提供 Get/Result/Reload/校验；可选运行时 Register。
 /// </summary>
 public class GridContext : MonoBehaviour
 {
@@ -25,11 +25,15 @@ public class GridContext : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
-
         ReloadFromList(assets);     // ← 单次构建索引
-        InitAreaContext();          // ← 依赖 AreaContext 的注册（可选）
         TLog.Log(this, "全局网格系统初始化完成...");
     }
+
+    private void OnApplicationQuit()
+    {
+        assets[0].FillPassableRuntime(1);
+    }
+
 
     /// <summary>从一组 GridAsset 重建索引；可在运行时或编辑器调用。</summary>
     public static void ReloadFromList(IEnumerable<GridAsset> all)
@@ -92,17 +96,7 @@ public class GridContext : MonoBehaviour
         return true;
     }
 
-    private void InitAreaContext()
-    {
-        // 依赖外部系统时先判空，避免启动顺序问题
-        if (AreaContext.Instance == null) return;
 
-        for (int id = 1; id <= 255; id++)
-        {
-            var v = _byId[id];
-            if (v != null) AreaContext.Instance.RegisterAreaByGridAsset(v);
-        }
-    }
 
 #if UNITY_EDITOR
     // 编辑器下：改 Inspector 列表后自动重建索引，避免运行前“数组/列表不同步”

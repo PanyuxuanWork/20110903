@@ -1,13 +1,18 @@
+using System;
+using System.Linq;
+using System.Reflection;
 using UnityEngine;
+using static System.Reflection.Assembly;
 
 [DefaultExecutionOrder(-1000)]
-public class GameCoreSystem : MonoBehaviour
+public class GameCoreSystem : MonoSingleton<GameCoreSystem>
 {
     [SerializeField]
     private GameObject[] _initGO;
 
-    private void Awake()
+    protected override void Awake()
     {
+        base.Awake();
         // 若需要常驻
         DontDestroyOnLoad(gameObject);
 
@@ -24,4 +29,24 @@ public class GameCoreSystem : MonoBehaviour
             go.transform.SetSiblingIndex(i);
         }
     }
+
+    void Start()
+    {
+        var typesWithAttribute = Assembly.GetExecutingAssembly().GetTypes()
+            .Where(t => t.IsSubclassOf(typeof(MonoBehaviour)) && Attribute.IsDefined(t, typeof(AutoAttached)))
+            .ToList();
+
+        foreach (var type in typesWithAttribute)
+        {
+            // 获取 AutoAttachToGameObjectAttribute 特性
+            var attribute = (AutoAttached)Attribute.GetCustomAttribute(type, typeof(AutoAttached));
+
+            if (attribute != null)
+            {
+                gameObject.AddComponent(type);
+            }
+        }
+    }
 }
+
+ 

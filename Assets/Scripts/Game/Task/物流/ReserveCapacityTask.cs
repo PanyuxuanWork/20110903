@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/26
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 
 using System;
@@ -38,7 +38,7 @@ public class ReserveCapacityTask : TaskBase
         {
             TLog.Error("居民背包容量已空");
         }
-        Fail();
+        Fail("[ReserveCapacityTask] Path not found");
     }
 
     protected override bool OnUpdate(float dt)
@@ -61,15 +61,4 @@ public class ReserveCapacityTask : TaskBase
         return t;
     }
 
-    protected override void Reset()
-    {
-        base.Reset();
-        storage = null;
-        resident = null;
-        residentTicket = -1;
-        storageTicket = -1;
-        amount = 0;
-        id = ResourceId.None;
-        OnReserved = null;
-    }
 }

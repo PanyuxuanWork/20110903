@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/28
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 using System;
 
@@ -45,7 +45,7 @@ public abstract class MiniStep
         if (CurrentState != State.None && CurrentState != State.Pending) return;
         CurrentState = State.Running;
         try { Started?.Invoke(this); } catch (Exception ex) { OnException(ex); }
-        try { OnStart(); } catch (Exception ex) { OnException(ex); Fail(); }
+        try { OnStart(); } catch (Exception ex) { OnException(ex); Fail(ex.Message); }
     }
     public bool Tick(float dt)
     {
@@ -68,7 +68,7 @@ public abstract class MiniStep
         catch (Exception ex)
         {
             OnException(ex);
-            Fail();
+            Fail(ex.Message);
             return true;
         }
     }
@@ -90,10 +90,10 @@ public abstract class MiniStep
     /// <summary>
     /// Mark failure.
     /// </summary>
-    protected void Fail()
+    protected void Fail(string msg="")
     {
         if (IsDone) return;
-        TLog.Log($"{StepName} is Failed");
+        TLog.Log($"{StepName} is Failed,reason {msg}");
         Transition(State.Failed, Result.Failed);
     }
 
@@ -170,7 +170,9 @@ public abstract class MiniStep
     public virtual void OnCancelEnd() { }
 
     /// <summary>Called in any terminal transition (Succeeded/Failed/Canceled).</summary>
-    public abstract void OnComplete(Result result);
+    public virtual void OnComplete(Result result)
+    {
+    }
 
     /// <summary>Exception handler for OnStart/OnUpdate.</summary>
     public virtual void OnException(Exception ex)

@@ -81,47 +81,6 @@ public class BuildableAreaPreview : MonoBehaviour
         RebuildNow();
     }
 
-    private void Update()
-    {
-        // 每几帧检查下是否有变更（移动/缩放网格会导致 bounds 变）
-        _frameThrottle++;
-        if (_frameThrottle % 10 != 0) return;
-
-        int h = ComputeStateHash();
-        if (h != _lastHash)
-        {
-            _lastHash = h;
-            RebuildInternal();
-        }
-    }
-
-    private int ComputeStateHash()
-    {
-        unchecked
-        {
-            int h = 17;
-            h = h * 23 + Sources.Count;
-            for (int i = 0; i < Sources.Count; i++)
-            {
-                MeshCollider mc = Sources[i];
-                if (mc == null) continue;
-                Bounds b = mc.bounds;
-                h = h * 23 + mc.GetInstanceID();
-                h = h * 23 + b.min.GetHashCode();
-                h = h * 23 + b.max.GetHashCode();
-                h = h * 23 + mc.transform.localToWorldMatrix.GetHashCode();
-            }
-            h = h * 23 + CellWidth.GetHashCode();
-            h = h * 23 + SnapOriginToCell.GetHashCode();
-            h = h * 23 + Length.GetHashCode();
-            // 高度相关设置变化也触发重建（高度数组需要重算）
-            h = h * 23 + EnableHeight.GetHashCode();
-            h = h * 23 + MinUpDot.GetHashCode();
-            h = h * 23 + PickMode.GetHashCode();
-            return h;
-        }
-    }
-
     private void RebuildInternal()
     {
         if (Sources.Count == 0)
@@ -178,6 +137,14 @@ public class BuildableAreaPreview : MonoBehaviour
             HeightY = null;
         }
 
+        // 获取场景中的 Terrain 对象
+        Terrain terrain = Terrain.activeTerrain;
+        if (terrain != null)
+        {
+            // 6) 更新 GridAsset 中的高度信息
+            UpdateHeightYInGridAsset(terrain); // 更新 heightY 数组
+        }
+
         for (int z = 0; z < Height; z++)
         {
             float cz = OriginXZ.y + (z + 0.5f) * CellWidth;
@@ -209,6 +176,7 @@ public class BuildableAreaPreview : MonoBehaviour
             }
         }
     }
+
 
     private struct TriXZ
     {
@@ -464,69 +432,69 @@ public class BuildableAreaPreview : MonoBehaviour
     }
 
 
-private bool TryRayToSurface(out Vector3 hitWorld)
-{
-    hitWorld = Vector3.zero;
-    var sv = SceneView.lastActiveSceneView;
-    if (sv == null || Event.current == null) return false;
-
-    Ray ray = HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
-
-    // 1) 逐个 MeshCollider 精确 Raycast（与层无关，直接打 collider）
-    float best = float.PositiveInfinity;
-    bool hit = false;
-    for (int i = 0; i < Sources.Count; i++)
+    private bool TryRayToSurface(out Vector3 hitWorld)
     {
-        var mc = Sources[i];
-        if (mc == null || !mc.enabled || !mc.gameObject.activeInHierarchy) continue;
+        hitWorld = Vector3.zero;
+        var sv = SceneView.lastActiveSceneView;
+        if (sv == null || Event.current == null) return false;
 
-        RaycastHit rh;
-        if (mc.Raycast(ray, out rh, 1e6f) && rh.distance < best)
-        {
-            best = rh.distance;
-            hitWorld = rh.point;
-            hit = true;
-        }
-    }
-    if (hit) return true;
+        Ray ray = HandleUtility.GUIPointToWorldRay(Event.current.mousePosition);
 
-    // 2) 回退：若开启了高度，尝试在“估计的地面高度”所在平面求交（减少视差）
-    if (EnableHeight)
-    {
-        // 先与 y=0 求一次交，拿到一个大致的 xz，再用你的采样函数估一个高度
-        Plane p0 = new Plane(Vector3.up, Vector3.zero);
-        float d0;
-        if (p0.Raycast(ray, out d0))
+        // 1) 逐个 MeshCollider 精确 Raycast（与层无关，直接打 collider）
+        float best = float.PositiveInfinity;
+        bool hit = false;
+        for (int i = 0; i < Sources.Count; i++)
         {
-            Vector3 guess = ray.origin + ray.direction * d0;
-            var tris = CollectWorldTrisXZ(Sources);
-            float y;
-            if (TrySampleHeight(guess.x, guess.z, tris, MinUpDot, PickMode, out y))
+            var mc = Sources[i];
+            if (mc == null || !mc.enabled || !mc.gameObject.activeInHierarchy) continue;
+
+            RaycastHit rh;
+            if (mc.Raycast(ray, out rh, 1e6f) && rh.distance < best)
             {
-                Plane pH = new Plane(Vector3.up, new Vector3(0f, y, 0f));
-                float dH;
-                if (pH.Raycast(ray, out dH))
+                best = rh.distance;
+                hitWorld = rh.point;
+                hit = true;
+            }
+        }
+        if (hit) return true;
+
+        // 2) 回退：若开启了高度，尝试在“估计的地面高度”所在平面求交（减少视差）
+        if (EnableHeight)
+        {
+            // 先与 y=0 求一次交，拿到一个大致的 xz，再用你的采样函数估一个高度
+            Plane p0 = new Plane(Vector3.up, Vector3.zero);
+            float d0;
+            if (p0.Raycast(ray, out d0))
+            {
+                Vector3 guess = ray.origin + ray.direction * d0;
+                var tris = CollectWorldTrisXZ(Sources);
+                float y;
+                if (TrySampleHeight(guess.x, guess.z, tris, MinUpDot, PickMode, out y))
                 {
-                    hitWorld = ray.origin + ray.direction * dH;
-                    return true;
+                    Plane pH = new Plane(Vector3.up, new Vector3(0f, y, 0f));
+                    float dH;
+                    if (pH.Raycast(ray, out dH))
+                    {
+                        hitWorld = ray.origin + ray.direction * dH;
+                        return true;
+                    }
                 }
             }
         }
-    }
 
-    // 3) 最终回退：y=0 平面
-    {
-        Plane plane = new Plane(Vector3.up, Vector3.zero);
-        float d;
-        if (plane.Raycast(ray, out d))
+        // 3) 最终回退：y=0 平面
         {
-            hitWorld = ray.origin + ray.direction * d;
-            return true;
+            Plane plane = new Plane(Vector3.up, Vector3.zero);
+            float d;
+            if (plane.Raycast(ray, out d))
+            {
+                hitWorld = ray.origin + ray.direction * d;
+                return true;
+            }
         }
-    }
 
-    return false;
-}
+        return false;
+    }
 
     private static Vector3 ProjectCameraCenterToPlane(Camera cam, float planeY)
     {
@@ -553,6 +521,35 @@ private bool TryRayToSurface(out Vector3 hitWorld)
         return outCorners;
     }
 
+    private void UpdateHeightYInGridAsset(Terrain terrain)
+    {
+        // 假设我们已经在 RebuildInternal 方法中计算并遍历了每个格子的世界坐标
+        // 获取每个格子的世界坐标，并从 Terrain 获取对应的高度，存储到 GridAsset 中
+
+        int total = Width * Height; // 网格总数
+        if (HeightY == null || HeightY.Length != total)
+            HeightY = new float[total];
+
+        for (int z = 0; z < Height; z++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                // 计算该格子的世界坐标（根据 OriginXZ 和 CellWidth）
+                float cx = OriginXZ.x + (x + 0.5f) * CellWidth;
+                float cz = OriginXZ.y + (z + 0.5f) * CellWidth;
+                Vector3 worldPos = new Vector3(cx, 0f, cz);  // 这里暂时将 Y 设置为 0，稍后会更新为高度值
+
+                // 获取 Terrain 上该点的高度
+                float terrainHeight = terrain.SampleHeight(worldPos);
+
+                // 存储高度到 GridAsset 中
+                int index = x + Width * z;
+                HeightY[index] = terrainHeight;
+            }
+        }
+    }
+
+
     // ====== Export ======
 #if UNITY_EDITOR
     [Header("Export")]
@@ -563,16 +560,24 @@ private bool TryRayToSurface(out Vector3 hitWorld)
     /// 将当前预览的规则网格导出为 GridAsset ScriptableObject 并保存到工程。
     /// </summary>
     [Button("Create GridAsset From Preview"), ContextMenu("Create GridAsset From Preview")]
-    public void CreateGridAssetFromPreview()
+    public void CreateAndAlignGridAsset(Terrain terrain, MeshCollider meshcollider)
     {
-        // 1) 基本校验
+        // 把 source 加进来并确保当前缓存已经生成（RebuildNow 会清理 Null 并 RebuildInternal）
+        AddSource(meshcollider);
+
+        // 基本校验
         if (Buildable == null || Buildable.Length == 0 || Width <= 0 || Height <= 0)
         {
             EditorUtility.DisplayDialog("Create GridAsset", "当前没有有效的栅格数据（请先确保 Sources 正确并已生成）。", "OK");
             return;
         }
+        if (terrain == null)
+        {
+            EditorUtility.DisplayDialog("Create GridAsset", "未指定 Terrain（参数为 null）。", "OK");
+            return;
+        }
 
-        // 2) 选择保存路径
+        // 选择保存路径
         if (string.IsNullOrEmpty(DefaultSaveFolder)) DefaultSaveFolder = "Assets";
         if (!AssetDatabase.IsValidFolder(DefaultSaveFolder))
         {
@@ -589,41 +594,71 @@ private bool TryRayToSurface(out Vector3 hitWorld)
         );
         if (string.IsNullOrEmpty(path)) return; // 用户取消
 
-        // 3) 创建并填充 GridAsset
+        // 创建并填充 GridAsset（内存中）
         GridAsset asset = ScriptableObject.CreateInstance<GridAsset>();
         asset.CellWidth = CellWidth;
         asset.OriginXZ = OriginXZ;
         asset.Width = Width;
         asset.Height = Height;
 
-        // 拷贝数组
+        // 拷贝可通行类型
         asset.passableType = new byte[Buildable.Length];
         System.Array.Copy(Buildable, asset.passableType, Buildable.Length);
 
-        // 若 GridAsset 中存在 heightY 字段，则同步写入（你之前已添加）
-        try
+        // 确保 asset 有高度存储（根据你的 GridAsset API 名称，这里使用 SetHeight）
+        // 优先使用当前预览已有的 HeightY（如果有且长度匹配），否则回落到 Terrain.SampleHeight。
+        bool havePreviewHeights = (HeightY != null && HeightY.Length == Width * Height);
+
+        // 预分配（如果 GridAsset 内部也用数组，可同时赋值，下面示范通过 SetHeight）
+        for (int z = 0; z < Height; z++)
         {
-            var f = typeof(GridAsset).GetField("heightY");
-            if (f != null && EnableHeight && HeightY != null && HeightY.Length == Buildable.Length)
+            for (int x = 0; x < Width; x++)
             {
-                float[] hy = new float[HeightY.Length];
-                System.Array.Copy(HeightY, hy, HeightY.Length);
-                f.SetValue(asset, hy);
+                int idx = asset.ToIndex(x, z);
+
+                float finalHeight = 0f;
+
+                if (havePreviewHeights)
+                {
+                    // 使用预览计算的高度（通常基于 Mesh 插值）
+                    finalHeight = HeightY[idx];
+                }
+                else
+                {
+                    // 计算世界坐标（采样时只需要 XZ，Y 任意）
+                    float worldX = OriginXZ.x + (x + 0.5f) * CellWidth;
+                    float worldZ = OriginXZ.y + (z + 0.5f) * CellWidth;
+                    Vector3 samplePos = new Vector3(worldX, 0f, worldZ);
+
+                    // Unity 的 Terrain.SampleHeight 返回地形在该点的高度（相对于世界坐标系）
+                    // 注意：有些项目把 GridAsset 的高度存为“相对 terrain.transform.position.y”或“世界 Y”。
+                    // 这里我们取 worldHeight = SampleHeight(...) + terrain.transform.position.y，保证得到世界 Y。
+                    float terrainLocalH = terrain.SampleHeight(samplePos);
+                    float worldHeight = terrainLocalH + terrain.transform.position.y;
+
+                    // 你可以根据 GridAsset 的约定决定写入 worldHeight 还是 terrainLocalH。
+                    // 下面写入 worldHeight 为默认更直观（若你的 GridAsset 期望 local 高度，请改用 terrainLocalH）。
+                    finalHeight = worldHeight;
+                }
+
+                // 将高度写入 asset（这里使用 SetHeight 接口；如果 GridAsset 还有 public height 数组，也可以直接赋值）
+                asset.SetHeight(x, z, finalHeight);
             }
         }
-        catch { /* 反射失败则忽略，不影响通行数据的导出 */ }
 
-        // 4) 写入工程并选中
+        // 创建 asset 到工程并保存
         AssetDatabase.CreateAsset(asset, path);
+        EditorUtility.SetDirty(asset);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
         EditorUtility.FocusProjectWindow();
         Selection.activeObject = asset;
 
-        Debug.Log($"[BuildableAreaPreview] GridAsset 已创建：{path}");
+        Debug.Log($"[BuildableAreaPreview] GridAsset 已创建并更新：{path}");
     }
-#endif
 
+
+#endif
 #endif
 }

@@ -1,206 +1,164 @@
 using System;
+using System.Diagnostics;
 
-// ============================================================================
-// 32 位建筑编码方案：
-// [31..24] = Major(8)       大类类型（保持原先分组风格）
-// [23..16] = Minor(8)       小类类型（不再混入大类位，纯 0~255）
-// [15..8]  = AssetId(8)     BuildingAsset 中的 ID（0~255）
-// [7..0]   = InstanceId(8)  全局分配的实例 ID（0~255）
-// ============================================================================
+// ===============================================================
+// BuildingTypeManager — 32-bit 编码布局：
+// [31..28]=Major4   0..15  （建筑大类）
+// [27..24]=Minor4   0..15  （建筑小类）
+// [23..16]=Asset8   0..255 （初始化模板/BuildingAsset Id）
+// [15..0 ]=Inst16   0..65535（场景运行期实例 Id）
+// ===============================================================
 
-/// <summary>
-/// 建筑大类（8 位）。沿用你原本“分组风格”，默认使用 0x10、0x20... 这种视觉分组，便于延续旧注释与文档。
-/// 也可以改为 0x01,0x02... 连续编号；数值本身不影响编码，只要 0~255 即可。
-/// </summary>
+#region 枚举（可按项目实际补充；取值必须 < 16）
 public enum BuildMajor : byte
 {
-    None = 0x00,
-    Residential = 0x10, // 住宅类
-    Industrial = 0x20, // 工业类
-    Commerce = 0x30, // 商业类
-    Military = 0x40, // 军事类
-    Agriculture = 0x50, // 农业类
-    Civic = 0x60, // 公共建筑
-    Decoration = 0x70, // 装饰类
-    Special = 0x80, // 特殊类
-    // 可继续扩展到 0xF0 范围内的分段（或任意 0~255）
+    None = 0,
+    收集类 = 0x10,
+    加工类 = 0x30,
+    生产类 = 0x20,
+    经济加工类 = 0x40,
+    住宅类 = 0x50,
+    仓储类 = 0x60,
+    功能类 = 0x70,
+    军事类 = 0x80,
+    市政类 = 0x90,
+    文化类 = 0xA0,
+    特殊类 = 0xB0,
+    超级建筑 = 0xC0,
 }
 
-/// <summary>
-/// 建筑小类（8 位）。与旧版不同：现在“小类”不再把“大类信息”混入自身数值，纯粹表示当前大类下的细分编号。
-/// 建议每个大类的小类从 0x01 起编号，0x00 预留为 None。
-/// </summary>
 public enum BuildMinor : byte
 {
-    None = 0x00,
+    None = 0,
+    采集小屋 = 0x11,
 
-    // Residential 小类（示例）
-    House = 0x01,
-    Apartment = 0x02,
-    Mansion = 0x03,
+    农场 = 0x21,
+    牧场 = 0x22,
+    渔坞 = 0x23,
+    伐木场 = 0x24,
+    采石场 = 0x25,
+    矿场 = 0x26,
 
-    // Industrial 小类（示例）
-    Mine = 0x01 + 0x20,   // 只是示例值；你也可以把所有小类集中从 0x01 连续编号
-    Factory = 0x02 + 0x20,
-    Workshop = 0x03 + 0x20,
+    粮食加工厂 = 0x31,
+    肉类加工厂 = 0x32,
+    冶炼厂 = 0x33,
+    木材加工厂 = 0x34,
 
-    // Agriculture 小类（示例）
-    Farm = 0x01 + 0x50,
-    Barn = 0x02 + 0x50,
+    制造厂 = 0x41,
 
-    // 按你的项目进一步补齐/重排。注意：数值范围 0~255，自由度很大。
+    小型住宅 = 0x51,
+    仓库 = 0x61,
+
+    医院 = 0x71,
+    斥候营地=0x72,
+
+    市政厅 = 0x91,
+    营地 = 0x92
+
 }
+#endregion
 
-/// <summary>
-/// [TODO] 建筑编码工具类（32 位版）：提供打包、解码、单字段读写等功能。
-/// 兼容性说明：本工具为全新 32 位格式；若需从旧 16 位迁移，可在下方添加转换辅助方法。
-/// </summary>
-public static class BuildCode32
+public static class BuildingTypeManager
 {
-    // ----------------------------
-    // 常量掩码/位移
-    // ----------------------------
-    private const int MAJOR_SHIFT = 24;
-    private const int MINOR_SHIFT = 16;
-    private const int ASSETID_SHIFT = 8;
-    private const uint BYTE_MASK = 0xFFu;
+    // 位常量
+    public const int MAJOR4_SHIFT = 28;
+    public const int MINOR4_SHIFT = 24;
+    public const int ASSET8_SHIFT = 16;
 
-    // ----------------------------
-    // 打包（Encode）
-    // ----------------------------
+    public const uint NIBBLE_MASK = 0xFu;       // 4 bit
+    public const uint BYTE_MASK = 0xFFu;      // 8 bit
+    public const uint WORD_MASK = 0xFFFFu;    // 16 bit
 
-    /// <summary>
-    /// 将 大类/小类/AssetID/InstanceID 打包为 32 位编码。
-    /// </summary>
-    public static uint Encode(BuildMajor major, BuildMinor minor, byte assetId, byte instanceId)
+    // ==========================
+    // Encode / Decode
+    // ==========================
+
+    /// <summary>打包 4–4–8–16（枚举版）</summary>
+    public static uint Encode(BuildMajor major4, BuildMinor minor4, byte asset8, ushort inst16)
+        => Encode((byte)major4, (byte)minor4, asset8, inst16);
+
+    /// <summary>打包 4–4–8–16（字节版）</summary>
+    public static uint Encode(byte major4, byte minor4, byte asset8, ushort inst16)
     {
-        return ((uint)major << MAJOR_SHIFT) |
-               ((uint)minor << MINOR_SHIFT) |
-               ((uint)assetId << ASSETID_SHIFT) |
-               (uint)instanceId;
-    }
-
-    /// <summary>
-    /// 重载：直接用裸 byte 打包。
-    /// </summary>
-    public static uint Encode(byte major, byte minor, byte assetId, byte instanceId)
-    {
-        return ((uint)major << MAJOR_SHIFT) |
-               ((uint)minor << MINOR_SHIFT) |
-               ((uint)assetId << ASSETID_SHIFT) |
-               (uint)instanceId;
-    }
-
-    // ----------------------------
-    // 解包（Decode）
-    // ----------------------------
-
-    /// <summary>
-    /// 从 32 位编码解码为 (major, minor, assetId, instanceId) —— 枚举版本。
-    /// </summary>
-    public static (BuildMajor major, BuildMinor minor, byte assetId, byte instanceId) Decode(uint code)
-    {
-        byte major = (byte)((code >> MAJOR_SHIFT) & BYTE_MASK);
-        byte minor = (byte)((code >> MINOR_SHIFT) & BYTE_MASK);
-        byte assetId = (byte)((code >> ASSETID_SHIFT) & BYTE_MASK);
-        byte instance = (byte)(code & BYTE_MASK);
-
-        return ((BuildMajor)major, (BuildMinor)minor, assetId, instance);
-    }
-
-    /// <summary>
-    /// 从 32 位编码解码为裸 byte。
-    /// </summary>
-    public static (byte major, byte minor, byte assetId, byte instanceId) DecodeBytes(uint code)
-    {
-        byte major = (byte)((code >> MAJOR_SHIFT) & BYTE_MASK);
-        byte minor = (byte)((code >> MINOR_SHIFT) & BYTE_MASK);
-        byte assetId = (byte)((code >> ASSETID_SHIFT) & BYTE_MASK);
-        byte instance = (byte)(code & BYTE_MASK);
-        return (major, minor, assetId, instance);
-    }
-
-    // ----------------------------
-    // 单字段读取（Extractors）
-    // ----------------------------
-
-    public static byte GetMajorByte(uint code) => (byte)((code >> MAJOR_SHIFT) & BYTE_MASK);
-    public static byte GetMinorByte(uint code) => (byte)((code >> MINOR_SHIFT) & BYTE_MASK);
-    public static byte GetAssetId(uint code) => (byte)((code >> ASSETID_SHIFT) & BYTE_MASK);
-    public static byte GetInstanceId(uint code) => (byte)(code & BYTE_MASK);
-
-    public static BuildMajor GetMajor(uint code) => (BuildMajor)GetMajorByte(code);
-    public static BuildMinor GetMinor(uint code) => (BuildMinor)GetMinorByte(code);
-
-    // ----------------------------
-    // 单字段写入（Setters，保持其他位不变）
-    // ----------------------------
-
-    public static uint SetMajor(uint code, byte major)
-    {
-        code &= ~(BYTE_MASK << MAJOR_SHIFT);
-        code |= ((uint)major << MAJOR_SHIFT);
+#if DEBUG
+        Debug.Assert(major4 < 16, "major4 必须 < 16");
+        Debug.Assert(minor4 < 16, "minor4 必须 < 16");
+#endif
+        uint code = 0;
+        code |= ((uint)major4 & NIBBLE_MASK) << MAJOR4_SHIFT;
+        code |= ((uint)minor4 & NIBBLE_MASK) << MINOR4_SHIFT;
+        code |= ((uint)asset8 & BYTE_MASK) << ASSET8_SHIFT;
+        code |= (uint)inst16 & WORD_MASK;
         return code;
     }
 
-    public static uint SetMinor(uint code, byte minor)
+    /// <summary>解包到基础类型</summary>
+    public static void Decode(uint code, out byte major4, out byte minor4, out byte asset8, out ushort inst16)
     {
-        code &= ~(BYTE_MASK << MINOR_SHIFT);
-        code |= ((uint)minor << MINOR_SHIFT);
+        major4 = (byte)((code >> MAJOR4_SHIFT) & NIBBLE_MASK);
+        minor4 = (byte)((code >> MINOR4_SHIFT) & NIBBLE_MASK);
+        asset8 = (byte)((code >> ASSET8_SHIFT) & BYTE_MASK);
+        inst16 = (ushort)(code & WORD_MASK);
+    }
+
+    /// <summary>解包到枚举</summary>
+    public static void Decode(uint code, out BuildMajor major4, out BuildMinor minor4, out byte asset8, out ushort inst16)
+    {
+        Decode(code, out byte maj, out byte min, out asset8, out inst16);
+        major4 = (BuildMajor)maj;
+        minor4 = (BuildMinor)min;
+    }
+
+    // ==========================
+    // Getters
+    // ==========================
+    public static byte GetMajor4(uint code) => (byte)((code >> MAJOR4_SHIFT) & NIBBLE_MASK);
+    public static byte GetMinor4(uint code) => (byte)((code >> MINOR4_SHIFT) & NIBBLE_MASK);
+    public static byte GetAsset8(uint code) => (byte)((code >> ASSET8_SHIFT) & BYTE_MASK);
+    public static ushort GetInstance16(uint code) => (ushort)(code & WORD_MASK);
+
+    public static BuildMajor GetMajor(uint code) => (BuildMajor)GetMajor4(code);
+    public static BuildMinor GetMinor(uint code) => (BuildMinor)GetMinor4(code);
+
+    // ==========================
+    // Setters（保留其余位）
+    // ==========================
+    public static uint SetMajor4(uint code, byte major4)
+    {
+#if DEBUG
+        Debug.Assert(major4 < 16);
+#endif
+        code &= ~(NIBBLE_MASK << MAJOR4_SHIFT);
+        code |= ((uint)major4 & NIBBLE_MASK) << MAJOR4_SHIFT;
         return code;
     }
 
-    public static uint SetAssetId(uint code, byte assetId)
+    public static uint SetMinor4(uint code, byte minor4)
     {
-        code &= ~(BYTE_MASK << ASSETID_SHIFT);
-        code |= ((uint)assetId << ASSETID_SHIFT);
+#if DEBUG
+        Debug.Assert(minor4 < 16);
+#endif
+        code &= ~(NIBBLE_MASK << MINOR4_SHIFT);
+        code |= ((uint)minor4 & NIBBLE_MASK) << MINOR4_SHIFT;
         return code;
     }
 
-    public static uint SetInstanceId(uint code, byte instanceId)
+    public static uint SetAsset8(uint code, byte asset8)
     {
-        code &= ~BYTE_MASK;
-        code |= instanceId;
+        code &= ~(BYTE_MASK << ASSET8_SHIFT);
+        code |= ((uint)asset8 & BYTE_MASK) << ASSET8_SHIFT;
         return code;
     }
 
-    // ----------------------------
-    // 便捷方法
-    // ----------------------------
-
-    /// <summary>
-    /// 检查编码是否为“空”（四段皆为 0）。
-    /// </summary>
-    public static bool IsZero(uint code) => code == 0u;
-
-    /// <summary>
-    /// 人类可读的字符串，用于调试。
-    /// </summary>
-    public static string ToDebugString(uint code)
+    public static uint SetInstance16(uint code, ushort inst16)
     {
-        var (M, m, A, I) = DecodeBytes(code);
-        return $"BuildCode32[Major=0x{M:X2}, Minor=0x{m:X2}, AssetId=0x{A:X2}, InstanceId=0x{I:X2}]";
+        code &= ~WORD_MASK;
+        code |= (uint)inst16 & WORD_MASK;
+        return code;
     }
 
-    // ----------------------------
-    // （可选）从旧 16 位编码迁移的辅助方法
-    // 旧格式： [15..8]=Type(8) ; [7..0]=Id(8)
-    // 你可以按需把旧 Type 拆成 Major/Minor（如果旧 Type 的高4位=大类，低4位=小类），并填入新的 AssetId/InstanceId。
-    // ----------------------------
-    public static uint FromLegacy16(ushort legacyCode, byte assetId, byte instanceId)
+    public static bool Validate(uint code)
     {
-        byte type8 = (byte)(legacyCode >> 8);
-        byte id8 = (byte)(legacyCode & 0xFF);
-
-        // 若旧版规则为：type8 高4位=大类，低4位=小类
-        byte majorNibble = (byte)((type8 >> 4) & 0x0F);
-        byte minorNibble = (byte)(type8 & 0x0F);
-
-        byte major = (byte)(majorNibble << 4); // 仍按 0x10,0x20... 的视觉分组
-        byte minor = (minorNibble == 0) ? (byte)0 : (byte)minorNibble; // 旧 None -> 0，新小类用 1..15
-
-        // 这里你也可以选择把旧 id8 填到新 AssetId，而把参数 assetId 作为覆盖。
-        // 当前实现：新 AssetId 优先生效；旧 id8 如需保留可自行扩展。
-        return Encode(major, minor, assetId, instanceId);
+        return GetMajor4(code) < 16 && GetMinor4(code) < 16;
     }
 }

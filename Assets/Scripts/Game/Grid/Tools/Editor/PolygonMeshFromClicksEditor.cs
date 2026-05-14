@@ -172,7 +172,7 @@ public class PolygonMeshFromClicksEditor : EditorWindow
 
     private void AddPoint(Vector3 p, Vector3 n)
     {
-        Undo.RecordObject(this, "Add Polygon Point");
+        Undo.RecordObject(this, "Reset Polygon Point");
         _points.Add(p);
         _normals.Add(n);
         ComputeBasis(); // 更新平面

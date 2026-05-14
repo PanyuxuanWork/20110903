@@ -1,12 +1,13 @@
 ﻿/***************************************************************************
 // File       : ClickPickerInfo3D.cs
 // Author     : Panyuxuan
-// Created    : 2025/10/
+// Created    : 2025/10/20
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -32,15 +33,34 @@ public class ClickPickerInfo3D : MonoSingleton<ClickPickerInfo3D>
     [SerializeField] private bool ignoreUI = true;            // 点击在 UI 上时是否忽略
     [SerializeField] private QueryTriggerInteraction trigger = QueryTriggerInteraction.Ignore;
     public RayHit ClickedInfo;
+
     protected override void Awake()
     {
         base.Awake();
         if (!cam) cam = Camera.main;
+        TLog.Log(this, "点击系统初始化已完成...");
     }
 
     private void Update()
     {
-        GetClickedInfo(out ClickedInfo);
+        if (GetClickedInfo(out ClickedInfo))
+        {
+            var v = ClickedInfo.gameObject.TryGetComponent(out ClickedUnit clickedUnit);
+            if (v)
+            {
+                if (!clickedUnit.gameObject.TryGetComponent(out Resident building))
+                {
+                    if (clickedUnit.isFirstClick)
+                        clickedUnit.isFirstClick = false;
+                    else clickedUnit.OnClicked.Invoke();
+                }
+                else
+                {
+                    clickedUnit.OnClicked.Invoke();
+                }
+            }
+        }
+
     }
 
     /// <summary>
@@ -80,4 +100,5 @@ public class ClickPickerInfo3D : MonoSingleton<ClickPickerInfo3D>
 
         return false;
     }
+
 }

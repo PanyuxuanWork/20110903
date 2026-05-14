@@ -5,16 +5,15 @@ using UnityEngine;
 
 public abstract class BuildingBase : MonoBehaviour
 {
-    public BuildAsset Building;
-    public Area Area;
-    public byte Type;
-
+    public BuildAsset buildAsset;
+    [HideInInspector]public Area Area;
+    public Transform VisitPosition;
     protected virtual void Awake()
     {
         if (Area == null)
         {
             Area = AreaContext.Instance.FindAreaByVector3(this.transform.position);
-            Area.RegisterNewBuilding(Building, gameObject);
+            Area.RegisterNewBuilding(buildAsset, gameObject);
         }
     }
 

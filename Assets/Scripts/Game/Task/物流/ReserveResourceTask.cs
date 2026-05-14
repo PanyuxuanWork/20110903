@@ -3,7 +3,7 @@
 // Author     : Panyuxuan
 // Created    : 2025/10/26
 // Copyright  : © 2025 SkyWander Games. All rights reserved.
-// Description: Add script summary here
+// Description: Reset script summary here
 // ***************************************************************************/
 
 using Sim.Resources;
@@ -47,7 +47,6 @@ public class ReserveResourceTask : TaskBase
         int amount)
     {
         ReserveResourceTask t = ObPool<ReserveResourceTask>.Get();
-        t.Reset();
         t.resident = resident;
         t.TargetStorage = targetStorage;
         t.amount = amount;
@@ -55,14 +54,4 @@ public class ReserveResourceTask : TaskBase
         return t;
     }
 
-    protected override void Reset()
-    {
-        base.Reset();
-        resident = null;
-        ResidentTicket = -1;
-        StorageTicket = -1;
-        TargetStorage = null;
-        id = ResourceId.None;
-        amount = 0;
-    }
 }

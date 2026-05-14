@@ -25,7 +25,7 @@ public class BuildableGridBakerWindow : EditorWindow
         _snapOriginToCell = EditorGUILayout.Toggle("Snap Origin To Cell", _snapOriginToCell);
 
         EditorGUILayout.Space();
-        if (GUILayout.Button("Add Selected MeshColliders"))
+        if (GUILayout.Button("Reset Selected MeshColliders"))
         {
             AddSelectedMeshColliders();
         }
